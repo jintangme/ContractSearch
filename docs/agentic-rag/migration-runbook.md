@@ -1,19 +1,20 @@
-# Agent Foundations Migration Runbook
+# Agent and Knowledge Foundations Migration Runbook
 
 ## Safety defaults
 
 - `AGENT_MIGRATIONS_ENABLED=false` by default.
 - `AGENT_ENABLED=false` and `AGENT_ROUTE_ENABLED=false` by default.
-- V1 is additive and must not alter `smart_contract` or its embedding columns.
-- Never test V1 first against the running `mydatabase` database.
+- V1 and V2 are additive and must not alter `smart_contract` or its embedding columns.
+- V2 only creates Knowledge Layer storage; it does not activate a corpus or retrieval index.
+- Never test a new migration first against the running `mydatabase` database.
 
 ## Required pre-production sequence
 
-1. Create an empty disposable PostgreSQL database and run V1 twice. The second run must report no pending migration.
+1. Create an empty disposable PostgreSQL database and run all migrations twice. The second run must report no pending migration.
 2. Create a disposable database from a schema-only dump of the running database.
-3. Configure Flyway with `baselineOnMigrate=true` and `baselineVersion=0`, then run V1.
+3. Configure Flyway with `baselineOnMigrate=true` and `baselineVersion=0`, then run all migrations.
 4. Compare `ai_chat_*` and `user_contract_record` columns/indexes with the live schema.
-5. Verify old Search, Chat, Contract Lab and authentication smoke tests against the disposable clone.
+5. Verify V2 ownership/trust constraints, then run old Search, Chat, Contract Lab and authentication smoke tests against the disposable clone.
 6. Back up the target database and record the backup identifier.
 7. Enable migrations for one `cloud-agent-service` instance, wait for health, then disable migration execution on additional replicas.
 
@@ -32,6 +33,10 @@ The migration role should own only the relevant schema and should not be the app
 
 Keep `LEGACY_CONVERSATION_DDL_ENABLED=true` for one release. After schema equivalence and rolling-deployment tests pass, set it to `false`. Delete the legacy `@PostConstruct` DDL only in a later contract migration.
 
+## Phase 2A activation boundary
+
+Applying V2 creates empty tables only. Do not populate them until the ingestion writer has dry-run/resume/idempotency coverage. Do not add an `ACTIVE` corpus or route production Search to Knowledge tables during Phase 2A.
+
 ## Rollback
 
-Disable `AGENT_ROUTE_ENABLED` and `AGENT_ENABLED`, then roll back the service binary. V1 tables are retained because they are additive and unused while the feature is off. Do not automatically drop evidence or proposal tables.
+Disable `AGENT_ROUTE_ENABLED` and `AGENT_ENABLED`, then roll back the service binary. V1/V2 tables are retained because they are additive and unused while the feature is off. Do not automatically drop Agent or Knowledge tables; remove a failed corpus version only through the later ingestion rollback command after its exact ID has been reviewed.
