@@ -1,13 +1,13 @@
 # Phase 1 Report: Foundations, Contracts and Evaluation Harness
 
-> Status: IN_PROGRESS — implementation complete, live GLM Tool Calling probe blocked
+> Status: COMPLETE — minimal live validation accepted; full protocol matrix deferred to Phase 9
 > Date: 2026-08-09
 
 ## Outcome
 
 The Java-native Agent foundation is implemented and default-off. `cloud-agent-service` starts on port 18082, reports healthy, rejects direct untrusted Agent requests, and completes a deterministic mock Tool loop with ordered SSE, Evidence and a reviewable Proposal. Existing Chat, Search, Contract Lab and runtime behavior remain unchanged.
 
-Phase 1 cannot be marked `COMPLETE` yet because the current Codex process has no `ZHIPU_API_KEY`. The key reported by the project owner is isolated in another terminal or IDE configuration and was not inherited by either Codex or the running `cloud-service`; no secret-recovery attempt was made. The live `glm-4.5-air` synchronous/streaming Tool Calling, thinking and invalid-parameter probe has therefore not been executed. On 2026-08-09 the owner explicitly accepted deferring this external environment check and authorized the Phase 1A implementation spike. Phase 1 remains `IN_PROGRESS` until the sanitized probe passes.
+The Codex process could not inherit the `ZHIPU_API_KEY` stored in another terminal or IDE configuration, so no secret-recovery attempt was made. The project owner subsequently started the service in the correctly configured terminal and confirmed a real `glm-4.5-air` Agent Run succeeded. On 2026-08-09 the owner accepted this as the minimal live validation and deferred the streaming/thinking/invalid-parameter protocol matrix to Phase 9 to avoid unnecessary model-call cost.
 
 ## Implemented scope
 
@@ -57,7 +57,7 @@ Both ran against PostgreSQL 18.3. Flyway 11.8.2 initially reported that PostgreS
 - Existing Gateway renamed-property, SLF4J provider, Jakarta validation and frontend Monaco warnings remain outside this change.
 - Lean runtime is not version-pinned to 4.31.0 and currently times out.
 
-## Required action to close Phase 1
+## Deferred protocol audit
 
 Expose `ZHIPU_API_KEY` to the terminal process without writing it to Git, then run:
 

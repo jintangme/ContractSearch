@@ -1,14 +1,14 @@
 # Phase 1A Report: Minimal Agentic RAG Validation
 
-> Status: IN_PROGRESS
-> Decision: ITERATE — implementation and real Tool chain pass; live `glm-4.5-air` loop and 30-case comparison remain outstanding
+> Status: COMPLETE — minimal validation accepted by project owner
+> Decision: GO_TO_PHASE_2_WITH_DEFERRED_EVALUATION
 > Date: 2026-08-09
 
 ## Outcome
 
 The first real, bounded Agentic RAG loop is implemented in `cloud-agent-service` and remains default-off. It can ask `glm-4.5-air` for one structured action at a time, execute only three allowlisted Tools, feed normalized observations back across an explicit untrusted-data boundary, and finish only with known Evidence IDs. A deterministic substitute provider proves the complete state loop. The three production adapters also passed a live local `cloud-service -> PostgreSQL/ParadeDB -> contract-runtime-service` integration test against the current contract catalog.
 
-This checkpoint is `ITERATE`, not `GO`. The current Codex process cannot access the API key imported in another terminal/IDE, so no real model loop or 30-case A/B/C quality comparison has been executed. Phase 2 must not start from this report.
+The project owner subsequently completed a real `glm-4.5-air` Agent Run from the local terminal and confirmed success. On 2026-08-09 the owner accepted this real run, the live Search/Get/Compile chain and the critical automated tests as the Phase 1A minimum gate. Phase 2 may start. The 30-case A/B/C comparison is explicitly deferred to Phase 9 to avoid unnecessary model-call cost; therefore this decision is an engineering readiness decision, not a measured claim that Agentic RAG already outperforms Direct GLM or Naive RAG.
 
 ## Modified scope
 
@@ -40,7 +40,7 @@ The `cloud-service` detail endpoint gained one optional query parameter with its
 - The final live test used `regenerateAbi=false` on the updated service. The temporary port 18083 service was stopped cleanly; the user's existing port 18081 process was not restarted.
 - No database migration was enabled and no write Tool was executed.
 
-## Still required before Phase 1A Exit Gate
+## Deferred to Phase 9 Hardening
 
 1. Run `probe-glm-contract.mjs` from the same process that has `ZHIPU_API_KEY`.
 2. Start Agent Service with `AGENT_MINI_LOOP_ENABLED=true` and execute representative real runs through the trusted Gateway path.
