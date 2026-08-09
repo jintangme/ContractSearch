@@ -11,6 +11,8 @@ No Flyway/Liquibase setup exists, and conversation tables can be created from `@
 
 Introduce Flyway in Phase 1. Baseline the existing live schema without recreating existing objects. Use expand/contract migrations: add new tables/columns/indexes first, deploy compatible code, migrate/backfill, and remove legacy behavior only in a later release.
 
+For the current non-empty database, use Flyway baseline version `0`; the first managed migration is `V1__agent_foundations.sql`. V1 must use idempotent, validated definitions for existing conversation and user-contract tables before adding Agent/Evidence objects. A fresh-database test and a clone-of-live migration test are required before touching the running database.
+
 Keep the current startup DDL behind a compatibility flag for one release, verify schema equivalence, then remove it.
 
 ## Consequences
@@ -22,4 +24,3 @@ Keep the current startup DDL behind a compatibility flag for one release, verify
 ## Rollback
 
 Roll back the service and feature flags while retaining additive tables. Use corpus/index pointers for data rollback.
-

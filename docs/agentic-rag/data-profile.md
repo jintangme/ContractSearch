@@ -27,6 +27,10 @@ The live database has two more contracts than the dump. The dump must not be tre
 | Solidity pragma present | 1856 | 98.25% |
 | Duplicate source rows beyond first copy | 663 | 35.10% |
 | Duplicate source hash groups | 97 | — |
+| ABI present | 1889 | 100.00% |
+| ABI status `generated` | 2 | 0.11% |
+| ABI status missing | 1887 | 99.89% |
+| Compiler version recorded | 2 | 0.11% |
 
 Duplicate rows must be grouped by content hash during ingestion, while retaining separate contract/address provenance records.
 
@@ -66,6 +70,7 @@ The maximum source is too large for direct model context or a single embedding. 
 4. Separate document identity from deployment/address provenance to avoid losing 663 duplicate deployments.
 5. Do not claim vector coverage over the full corpus until missing embeddings are rebuilt.
 6. Keep user drafts/history outside the public corpus and apply user ownership filters before retrieval.
+7. ABI presence does not prove reproducible compilation: only two rows currently record a generated status/compiler version.
 
 ## Profiling still required in Phase 2
 
@@ -74,4 +79,3 @@ The maximum source is too large for direct model context or a single embedding. 
 - License normalization beyond the SPDX marker heuristic.
 - AST function/modifier coverage and file/line round-trip validation.
 - Content-level near-duplicate clusters, not only exact MD5 groups.
-

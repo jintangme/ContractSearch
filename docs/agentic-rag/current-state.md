@@ -19,7 +19,7 @@ The effective project root is `计算机设计大赛2.0/`, because the Java/Vue 
 └── plan.md
 ```
 
-No Git worktree was detected at the project root or its main child projects. Creating a repository and baseline commit requires explicit user approval and remains a Phase 0 blocker.
+The user approved `计算机设计大赛2.0/` as the Git root. A sanitized baseline repository is created at this root; local dumps, archives, credentials, generated data, dependencies and build output are excluded.
 
 ## Build and runtime versions
 
@@ -86,10 +86,9 @@ Nacos reported two services: `cloud-gateway` and `smart-contract-search-engine`.
 
 ## Critical Phase 1 prerequisites
 
-1. User-approved Git root and recoverable baseline commit.
-2. Revoke and rotate the third-party API keys currently committed in `scse-discover.yaml`; replace them with environment/secret references.
-3. Pin Solidity and Lean runtime versions. Lean must not download a toolchain during a request.
-4. Make backend/runtime ports private or require service authentication before exposing Agent tools.
-5. Decide and document the local/prod Nginx topology; no Nginx configuration is present in this repository.
-6. Introduce versioned database migrations before adding Agent tables.
+1. Pin Solidity and Lean runtime versions. The user confirmed Lean `4.31.0`; Lean must not download a toolchain during a request.
+2. Make backend/runtime ports private or require service authentication before exposing Agent tools.
+3. Decide and document the local/prod Nginx topology; no Nginx configuration is present in this repository.
+4. Introduce versioned database migrations before adding Agent tables.
 
+Discovery credentials have been removed from Git/Nacos configuration and are now loaded from `DUNE_API_KEY` and `ETHERSCAN_API_KEY`. If an earlier copy of the folder was shared, the old provider-side credentials still need revocation/rotation by their owner.

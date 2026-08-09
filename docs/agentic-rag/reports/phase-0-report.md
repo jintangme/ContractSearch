@@ -1,12 +1,12 @@
 # Phase 0 Report: Repository Discovery and Fact Baseline
 
 > Date: 2026-08-09  
-> Result: IMPLEMENTED_WITH_BLOCKERS  
-> Business code changed: No
+> Result: COMPLETE
+> Business code changed: Discovery credential-loading hardening only
 
 ## Outcome
 
-The repository, running local services, live database, OpenAPI surface, model path, search smoke baseline and runtime behavior were audited. The target architecture in `plan.md` is compatible with the current system, but Phase 1 must not start until the recoverability and secret-management blockers below are resolved.
+The repository, running local services, live database, OpenAPI surface, model path, search baseline and runtime behavior were audited. The project now has a sanitized Git baseline, discovery credentials are outside Git/Nacos, and Lean `4.31.0` is the confirmed target. Phase 1 may start without enabling Lean as an Agent Tool.
 
 ## Files added
 
@@ -21,6 +21,14 @@ The repository, running local services, live database, OpenAPI surface, model pa
 - `docs/agentic-rag/adr/ADR-004-sse-auth.md`
 - `docs/agentic-rag/adr/ADR-005-artifact-storage.md`
 - `docs/agentic-rag/reports/phase-0-report.md`
+- `docs/agentic-rag/eval/phase0-smoke-queries.json`
+- `docs/agentic-rag/eval/phase0-search-baseline.json`
+- `scripts/agentic-rag/run-phase0-search-baseline.mjs`
+- `.gitignore`
+- `代码/scse-discover/app/main.py`
+- `代码/scse-discover/app/services/task_service.py`
+- `代码/scse-discover/tests/test_secret_config.py`
+- discovery config/examples/docs and Python requirements
 
 ## Dynamic verification results
 
@@ -36,6 +44,7 @@ The repository, running local services, live database, OpenAPI surface, model pa
 | `glm-4.5-air` basic call | PASS; correct requested/used model returned |
 | Lean proof check | FAIL; request attempted 4.32.2 download and timed out |
 | Discovery service :18000 | NOT RUNNING; not required for online app |
+| Search smoke baseline | PASS; 24/24 requests completed, average 685 ms |
 
 ## Build verification
 
@@ -45,18 +54,19 @@ The repository, running local services, live database, OpenAPI surface, model pa
 | Vue production build | PASS; output written to `/private/tmp`, project `dist/` not modified |
 | Runtime JavaScript syntax | PASS for both Node entry points |
 | Baseline JSON parse | PASS |
+| Discovery secret-loading tests | PASS; 3 tests |
+| Staged known-secret scan | PASS; no known exposed key values and no real `.env` tracked |
 
 Non-blocking warnings recorded for later cleanup: Spring Cloud Gateway uses temporarily migrated property keys; Nacos test logging targets a home-directory log path; the backend reports multiple SLF4J providers and no Jakarta Validation provider; the Vue build has a roughly 2.56 MB Monaco/editor chunk. These warnings predate Phase 0 and no source fix was made in this documentation-only stage.
 
 ## Important findings
 
-1. `scse-discover.yaml` contains plaintext third-party API credentials. Values are intentionally not reproduced in any Phase 0 deliverable. Revoke/rotate them and replace the file values with environment references.
-2. No Git worktree exists, so the plan's per-phase rollback guarantee is not yet achievable.
-3. Backend direct access trusts `X-User-Id`, so port 18081 is a privileged internal boundary.
-4. Runtime versions drift from documentation/package intent; Lean is currently unusable and request-time downloads violate reproducibility.
-5. Search request `limit` is ignored, RRF score is not exposed, and two semantic smoke queries showed a suspicious shared top result.
-6. Corpus duplication and embedding gaps are large enough that Phase 2 must rebuild a versioned shadow corpus rather than reuse rows blindly.
-7. No production Nginx configuration or deployment/backup runbook was found.
+1. Discovery credentials were present in the root config, `.env`, an instruction file and a cached Nacos snapshot. Tracked/Nacos copies are now sanitized; the local `.env` remains ignored. Provider-side rotation is still recommended if any old copy was shared.
+2. Backend direct access trusts `X-User-Id`, so port 18081 is a privileged internal boundary.
+3. Runtime versions drift from documentation/package intent; Lean is currently unusable and request-time downloads violate reproducibility.
+4. Search request `limit` is ignored and RRF score is not exposed. All 12 semantic baseline queries returned `SimpleStoragePlus` as Top-1; 20/24 total queries returned 100 rows despite requesting 10.
+5. Corpus duplication and embedding gaps are large enough that Phase 2 must rebuild a versioned shadow corpus rather than reuse rows blindly.
+6. No production Nginx configuration or deployment/backup runbook was found.
 
 ## Exit Gate assessment
 
@@ -65,11 +75,11 @@ Non-blocking warnings recorded for later cleanup: Spring Cloud Gateway uses temp
 | Facts have evidence or are explicit blockers | PASS |
 | No production/database writes | PASS |
 | Adapter ownership is documented | PASS |
-| Recoverable version-control baseline | BLOCKED — user approval required |
-| Lean current/target/fix is unambiguous | PARTIAL — discrepancy proven; pinning implementation belongs before Lean Tool enablement |
-| Secret handling safe for new work | BLOCKED — exposed discovery credentials must be rotated |
+| Recoverable version-control baseline | PASS — root initialized and sanitized baseline committed |
+| Lean current/target/fix is unambiguous | PASS — target 4.31.0 confirmed; runtime pin/health enforcement required before enabling the Tool |
+| Secret handling safe for new work | PASS — Git/Nacos use environment references; old provider keys require owner rotation only if previously shared |
 
-Phase 0 is therefore recorded as `IMPLEMENTED_WITH_BLOCKERS`, not `COMPLETE`.
+Phase 0 is recorded as `COMPLETE`.
 
 ## Manual test checklist
 
@@ -79,11 +89,12 @@ Phase 0 is therefore recorded as `IMPLEMENTED_WITH_BLOCKERS`, not `COMPLETE`.
 - [ ] In Proof Workbench, check `example : True := by trivial`; confirm the current failure/timeout before any Lean fix.
 - [ ] Open Nacos and confirm only `cloud-gateway` and `smart-contract-search-engine` are registered.
 - [ ] Confirm ports 18081, 19090 and 19100 are not exposed outside the trusted local/private network.
-- [ ] After key rotation, verify discovery import using newly supplied environment variables.
+- [ ] Install the updated discovery requirements under Python 3.11, then verify `/health` with `DUNE_API_KEY` and `ETHERSCAN_API_KEY` supplied locally.
+- [ ] If an old project copy was shared, rotate the Dune/Etherscan keys before triggering discovery.
 
 ## Restart requirements
 
-None. This phase adds documentation and baseline data only. Existing services were probed but not modified or restarted.
+No currently running service requires restart: `scse-discover` was not running. Before its next start, install the updated Python requirements. Nacos configuration was updated dynamically and does not require a Nacos restart.
 
 ## Database migration
 
@@ -91,11 +102,8 @@ None. All database operations were read-only.
 
 ## Rollback
 
-Remove the new `docs/agentic-rag/` files and revert the Phase 0 status row in `plan.md`. No runtime or database state needs rollback.
+Use the baseline commit to inspect/revert later changes. To undo discovery hardening, restore its previous code/config only from a secure local copy; do not recommit plaintext credentials. No database rollback is required.
 
-## Required user decisions before Phase 1
+## Remaining environment input
 
-1. Approve the Git root (`计算机设计大赛2.0/` is recommended) and creation of a baseline repository/commit, or provide the intended existing remote/worktree.
-2. Rotate the exposed Dune/Etherscan keys and confirm whether Codex may replace `scse-discover.yaml` values with environment placeholders.
-3. Confirm whether local development should pin Lean to the plan target 4.31.0 or adopt a different target after team review.
-4. Provide or identify the real Nginx/deployment/backup configuration if it exists outside this folder.
+Provide or identify the real Nginx/deployment/backup configuration if it exists outside this folder. Its absence is documented and does not block building the feature-flagged local Phase 1 skeleton.
