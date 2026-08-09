@@ -6,7 +6,6 @@
           <button class="new-chat-button" type="button" @click="resetConversation">新对话</button>
           <h1 v-if="currentConversationTitle !== '新对话'">{{ currentConversationTitle }}</h1>
         </div>
-        <span class="assistant-status">智能检索已开启</span>
         <button class="history-button" type="button" @click="openHistory">
           对话记录
           <span v-if="sessions.length">{{ sessions.length }}</span>
@@ -122,7 +121,6 @@
               <button type="button" @click="openContractPicker">选择合约</button>
             </div>
           </div>
-          <span class="agent-model-inline">自动检索 · 工具检查 · 来源可追溯</span>
           <button class="send-button" type="button" :disabled="!canSend" @click="sendMessage">
             {{ isSending ? '生成中...' : '发送' }}
           </button>
@@ -740,12 +738,6 @@ function scrollToBottom() {
   gap: 12px;
 }
 
-.assistant-status {
-  color: #667085;
-  font-size: 12px;
-  font-weight: 650;
-}
-
 .new-chat-button {
   height: 34px;
   padding: 0 12px;
@@ -1234,14 +1226,8 @@ textarea:focus {
   gap: 10px;
 }
 
-.agent-model-inline {
-  margin-left: auto;
-  color: #475467;
-  font-size: 13px;
-  font-weight: 750;
-}
-
 .send-button {
+  margin-left: auto;
   height: 34px;
   min-width: 74px;
   padding: 0 14px;
