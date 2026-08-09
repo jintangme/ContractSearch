@@ -52,7 +52,8 @@ class MiniAgentLoopEngineTest {
         assertThat(result.toolCalls()).isEqualTo(4);
         assertThat(result.retrievalRounds()).isEqualTo(1);
         assertThat(result.evidence()).hasSize(4);
-        assertThat(result.answer()).contains("Evidence:");
+        assertThat(result.answer()).doesNotContain("Evidence:");
+        assertThat(result.evidence()).isNotEmpty();
         assertThat(requests.get(1).observations().get(0)).contains("UNTRUSTED_TOOL_OUTPUT");
         assertThat(result.events()).anyMatch(event -> "tool.requested".equals(event.type()));
     }
@@ -147,8 +148,9 @@ class MiniAgentLoopEngineTest {
             if (!request.tools().isEmpty()) {
                 return AgentDecision.toolCall("get_contract.v1", "{\"contractId\":1}", "get");
             }
-            return AgentDecision.finalAnswer("The available contract evidence is sufficient.",
-                    request.evidence().stream().map(item -> item.id()).toList(), "final");
+            List<UUID> ids = request.evidence().stream().map(item -> item.id()).toList();
+            return AgentDecision.finalAnswer("The available contract evidence is sufficient.\n\nEvidence: [" + ids.get(0) + "]",
+                    ids, "final");
         };
 
         MiniLoopResult result = engine(provider, new AgentProperties.MiniLoop(true, 3, 1, 1))
@@ -159,6 +161,8 @@ class MiniAgentLoopEngineTest {
         assertThat(requests).hasSize(2);
         assertThat(requests.get(1).remainingToolCalls()).isZero();
         assertThat(requests.get(1).tools()).isEmpty();
+        assertThat(result.answer()).doesNotContain("Evidence:")
+                .doesNotContain(result.evidence().get(0).id().toString());
     }
 
     @Test

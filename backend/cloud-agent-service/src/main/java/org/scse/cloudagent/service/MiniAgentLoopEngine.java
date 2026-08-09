@@ -219,12 +219,7 @@ public class MiniAgentLoopEngine {
         move(context, AgentSignal.START_SYNTHESIS, "run.synthesizing",
                 Map.of("evidenceIds", decision.evidenceIds(), "abstained", abstained,
                         "stopReason", decision.stopReason()));
-        context.answer = decision.answer();
-        if (!decision.evidenceIds().isEmpty()) {
-            context.answer += "\n\nEvidence: "
-                    + decision.evidenceIds().stream().map(id -> "[" + id + "]")
-                    .reduce((a, b) -> a + " " + b).orElse("");
-        }
+        context.answer = stripEvidenceFooter(decision.answer());
         move(context, AgentSignal.COMPLETE, "run.completed", Map.of(
                 "answer", context.answer,
                 "steps", context.steps,
@@ -279,6 +274,11 @@ public class MiniAgentLoopEngine {
         } catch (JsonProcessingException exception) {
             throw new AgentToolException(AgentErrorCode.INTERNAL_ERROR, "Unable to serialize tool observation", exception);
         }
+    }
+
+    private String stripEvidenceFooter(String answer) {
+        if (answer == null) return null;
+        return answer.replaceFirst("(?is)\\s*Evidence:\\s*(?:\\[[0-9a-f-]{36}\\]\\s*)+$", "").trim();
     }
 
     private static final class Context {

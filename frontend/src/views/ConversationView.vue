@@ -45,8 +45,11 @@
             <p v-if="message.role !== 'assistant'" class="message-content">{{ message.content }}</p>
             <section v-if="message.agentRun?.state === 'COMPLETE' && message.agentRun?.evidence?.length && !message.loading" class="answer-sources">
               <details>
-                <summary>
-                  <span>参考来源</span>
+                <summary title="查看参考来源" aria-label="查看参考来源">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                    <path d="M10.6 13.4a4.5 4.5 0 0 0 6.36 0l2.12-2.12a4.5 4.5 0 0 0-6.36-6.36L11.5 6.14" />
+                    <path d="M13.4 10.6a4.5 4.5 0 0 0-6.36 0l-2.12 2.12a4.5 4.5 0 0 0 6.36 6.36l1.22-1.22" />
+                  </svg>
                 </summary>
                 <div class="source-list">
                   <details v-for="(item, index) in message.agentRun.evidence" :key="item.id" class="source-item">
@@ -1018,20 +1021,38 @@ function scrollToBottom() {
 }
 
 .answer-sources {
-  margin-top: 14px;
-  padding-top: 11px;
-  border-top: 1px solid #eef1f5;
+  margin-top: 7px;
 }
 
 .answer-sources > details > summary {
-  width: fit-content;
+  width: 28px;
+  height: 28px;
   display: flex;
   align-items: center;
-  gap: 7px;
-  color: #475467;
-  font-size: 12px;
-  font-weight: 700;
+  justify-content: center;
+  border-radius: 8px;
+  color: #98a2b3;
   cursor: pointer;
+  list-style: none;
+  transition: color 0.16s ease, background 0.16s ease;
+}
+
+.answer-sources > details > summary::-webkit-details-marker {
+  display: none;
+}
+
+.answer-sources > details > summary::marker {
+  content: '';
+}
+
+.answer-sources > details > summary:hover {
+  color: #344054;
+  background: #f3f4f6;
+}
+
+.answer-sources > details > summary svg {
+  width: 16px;
+  height: 16px;
 }
 
 .source-list {
