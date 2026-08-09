@@ -62,9 +62,6 @@
               <button class="action-btn action-btn--primary" @click="aiDrawerOpen = true">
                 AI 合约解读
               </button>
-              <button class="action-btn action-btn--agent" @click="sendToAgent">
-                在 AI 对话中继续
-              </button>
             </div>
           </section>
 
@@ -699,18 +696,6 @@ function openInContractLab() {
       labTransferMessage.value = ''
     }, 2200)
   }
-}
-
-function sendToAgent() {
-  if (!contract.value) return
-  router.push({
-    path: '/conversation',
-    query: {
-      agent: '1',
-      contractId: String(id),
-      prompt: `请读取并验证当前合约 ${contract.value.contractName || ''}：结合领域知识检查源码、编译结果和安全风险，给出带 Evidence 的结论。`
-    }
-  })
 }
 
 function openCodeViewer(type) {
@@ -1794,18 +1779,6 @@ function buildDescriptionSummary(description) {
 
 .action-btn--primary:hover:not(:disabled) {
   opacity: 0.97;
-  transform: translateY(-1px);
-}
-
-.action-btn--agent {
-  border: 1px solid #b9c7ff;
-  background: #eef2ff;
-  color: #3448a3;
-}
-
-.action-btn--agent:hover {
-  border-color: #9cacfa;
-  background: #e4e9ff;
   transform: translateY(-1px);
 }
 

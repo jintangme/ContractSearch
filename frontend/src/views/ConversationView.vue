@@ -215,12 +215,8 @@
 
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
 import { agentApi, contractApi } from '@/api'
 import MarkdownMessage from '@/components/MarkdownMessage.vue'
-
-const route = useRoute()
-const router = useRouter()
 
 const currentAgentSessionId = ref(null)
 const inputText = ref('')
@@ -260,7 +256,6 @@ watch(messages, () => scrollToBottom(), { deep: true })
 
 onMounted(async () => {
   await loadSessions()
-  await consumeAgentRouteContext()
   window.addEventListener('conversation:new', resetConversation)
 })
 
@@ -687,38 +682,6 @@ async function attachContract(item) {
   } catch {
     errorMessage.value = '附件解析失败'
   }
-}
-
-async function consumeAgentRouteContext() {
-  if (String(route.query.agent || '') !== '1') return
-  const prompt = String(route.query.prompt || '').trim()
-  if (prompt) inputText.value = prompt.slice(0, 12000)
-  const contractId = Number(route.query.contractId)
-  if (Number.isInteger(contractId) && contractId > 0) {
-    try {
-      const response = await contractApi.getContractDetail(contractId)
-      const detail = response?.data
-      if (detail) {
-        addAttachment({
-          contractId,
-          fileName: `${detail.contractName || 'Contract'}.sol`,
-          fileType: 'sol',
-          sourceType: 'contract',
-          contentText: [
-            `合约名：${detail.contractName || ''}`,
-            `地址：${detail.address || ''}`,
-            `类型：${detail.category || ''}`,
-            `摘要：${detail.description || ''}`,
-            '源码：',
-            detail.sourceCode || ''
-          ].join('\n')
-        })
-      }
-    } catch {
-      errorMessage.value = '无法读取来源合约，仍可直接提问'
-    }
-  }
-  router.replace({ path: '/conversation' }).catch(() => {})
 }
 
 function addAttachment(attachment) {

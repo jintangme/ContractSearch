@@ -77,9 +77,6 @@
             </label>
           </div>
         </div>
-        <button class="agent-search-btn" type="button" :disabled="!keyword.trim()" @click="sendSearchToAgent">
-          在 AI 对话中深入分析
-        </button>
       </div>
     </section>
 
@@ -345,17 +342,6 @@ function handleCardClick(item) {
   router.push(`/contract/${item.id}`)
 }
 
-function sendSearchToAgent() {
-  const query = keyword.value.trim()
-  if (!query) return
-  router.push({
-    path: '/conversation',
-    query: {
-      agent: '1',
-      prompt: `请围绕“${query}”检索领域知识和合约候选，选择一个合适的合约读取源码并验证，最后给出带 Evidence 的结论。`
-    }
-  })
-}
 </script>
 
 <style scoped>
@@ -593,23 +579,6 @@ function sendSearchToAgent() {
   margin-top: 12px;
   padding-top: 10px;
   border-top: 1px solid #eef1f4;
-}
-
-.agent-search-btn {
-  margin-left: auto;
-  height: 36px;
-  padding: 0 13px;
-  border: 1px solid #b9c7ff;
-  border-radius: 11px;
-  background: #eef2ff;
-  color: #3448a3;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.agent-search-btn:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
 }
 
 .control-group {
@@ -876,11 +845,6 @@ function sendSearchToAgent() {
   .control-select,
   .search-btn {
     width: 100%;
-  }
-
-  .agent-search-btn {
-    width: 100%;
-    margin-left: 0;
   }
 
   .page-title {

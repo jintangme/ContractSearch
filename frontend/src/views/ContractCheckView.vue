@@ -121,9 +121,6 @@
 
         <div class="head-actions">
           <div class="head-actions__left">
-            <button type="button" class="btn btn--agent" @click="continueInAgent">
-              在 AI 对话中继续
-            </button>
             <button v-if="showFixAction" type="button" class="btn btn--ghost" @click="returnToContractLabFix">
               返回实验室
             </button>
@@ -738,21 +735,6 @@ function returnToContractLabFix() {
   const report = buildPrecheckReport()
   sessionStorage.setItem(PRECHECK_REPORT_TRANSFER_KEY, JSON.stringify(report))
   router.push('/contract-lab')
-}
-
-function continueInAgent() {
-  if (!result.value) return
-  const contractName = form.contractName.trim() || extractContractName(form.sourceCode) || '当前合约'
-  const issueSummary = visibleDiagnostics.value.slice(0, 5)
-    .map(item => `${item.severity}: ${item.title} - ${item.message}`)
-    .join('\n')
-  router.push({
-    path: '/conversation',
-    query: {
-      agent: '1',
-      prompt: `请结合权威知识库复核 ${contractName} 的预审方向。以下是现有预审摘要，仅作为任务背景，不得当作 Evidence：风险级别 ${inferOverallRiskLevel()}；${issueSummary || '未列出具体问题'}。请检索可引用依据，说明哪些结论可支持、哪些仍需源码或工具验证。`.slice(0, 1800)
-    }
-  })
 }
 
 async function handleCheck() {
@@ -1878,12 +1860,6 @@ select.field-input:disabled {
   border: 1px solid #d8d8d8;
   background: #ffffff;
   color: #333333;
-}
-
-.btn--agent {
-  border: 1px solid #b9c7ff;
-  background: #eef2ff;
-  color: #3448a3;
 }
 
 .btn--ghost {
