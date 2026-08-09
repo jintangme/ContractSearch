@@ -1,0 +1,42 @@
+spring:
+  application.name: smart-contract-search-engine
+  # 引入mysql
+  datasource:
+    driver-class-name: org.postgresql.Driver
+    url: jdbc:postgresql://localhost:5432/mydatabase    # 替换名称
+    username: ${POSTGRESQL_DB_USERNAME:myuser}          # 配置环境变量
+    password: ${POSTGRESQL_DB_PASSWORD:mypassword}      # 配置环境变量
+  servlet:
+    multipart:
+      max-file-size: 300MB
+      max-request-size: 300MB
+      enabled: true
+  cloud:
+    nacos:
+      serverAddr: 127.0.0.1:8848
+      discovery:
+        server-addr: ${spring.cloud.nacos.server-addr}
+  config:
+    import:
+      - nacos:nacos-config-example.properties?refreshEnabled=true
+
+mybatis-plus:
+  mapper-locations: classpath*:mapper/*.xml
+  configuration:
+    map-underscore-to-camel-case: true
+  type-handlers-package: org.scse.smartcontractsearchengine.handler
+
+file:
+  storage:
+
+security:
+  jwt:
+    secret: ${JWT_SECRET:scse-dev-jwt-secret-2026-local-min-32-bytes}
+    expiration-ms: ${JWT_EXPIRATION_MS:86400000}
+
+server:
+  tomcat:
+    accept-count: 2000
+    max-connections: 2000
+    max-swallow-size: 300MB
+  port: 18081

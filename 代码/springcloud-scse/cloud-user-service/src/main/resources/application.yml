@@ -1,0 +1,11 @@
+spring:
+  application:
+    name: cloud-user-service
+  cloud:
+    nacos:
+      server-addr: 127.0.0.1:8848
+  config:
+    import:
+      - nacos:nacos-config-example.properties?refreshEnabled=true
+server:
+  port: 18083

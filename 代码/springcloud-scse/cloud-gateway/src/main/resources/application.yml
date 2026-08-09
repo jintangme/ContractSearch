@@ -1,0 +1,36 @@
+spring:
+  application:
+    name: cloud-gateway
+  cloud:
+    nacos:
+      server-addr: 127.0.0.1:8848
+      discovery:
+        server-addr: ${spring.cloud.nacos.server-addr}
+    gateway:
+      globalcors:
+        cors-configurations:
+          '[/**]':
+            allowedOriginPatterns: "*"
+            allowedMethods:
+              - GET
+              - POST
+              - PUT
+              - DELETE
+              - OPTIONS
+            allowedHeaders: "*"
+            allowCredentials: true
+      routes:
+        - id: smart-contract-search-engine-api
+          uri: lb://smart-contract-search-engine
+          predicates:
+            - Path=/api/**
+  config:
+    import:
+      - nacos:nacos-config-example.properties?refreshEnabled=true
+
+security:
+  jwt:
+    secret: ${JWT_SECRET:scse-dev-jwt-secret-2026-local-min-32-bytes}
+
+server:
+  port: 18080

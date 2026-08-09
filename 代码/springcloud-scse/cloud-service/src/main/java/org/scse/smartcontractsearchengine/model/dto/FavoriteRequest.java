@@ -1,0 +1,11 @@
+package org.scse.smartcontractsearchengine.model.dto;
+
+import lombok.Data;
+
+@Data
+public class FavoriteRequest {
+
+    private Long folderId;
+
+    private String newFolderName;
+}

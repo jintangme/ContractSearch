@@ -1,0 +1,44 @@
+# macOS / IDE
+.DS_Store
+**/.DS_Store
+.idea/
+**/.idea/
+.vscode/
+**/.vscode/
+*.iml
+
+# Secrets and local environment
+.env
+**/.env
+**/.env.*
+!**/.env.example
+*.pem
+*.key
+*.zip
+
+# Java
+**/target/
+*.log
+代码/springcloud-scse/cloud-service/data/
+
+# Node / frontend
+**/node_modules/
+**/dist/
+**/.vite/
+
+# Python / discovery output
+**/__pycache__/
+**/*.py[cod]
+**/.pytest_cache/
+**/.venv/
+**/venv/
+代码/scse-discover/data/
+代码/scse-discover/nacos-data/
+代码/scse-discover/*.parquet
+
+# Local database dump is 100+ MB and cannot be pushed to common Git hosts.
+代码/pg18.sql
+
+# Lean build/cache
+**/.lake/
+**/lake-packages/

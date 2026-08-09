@@ -1,0 +1,163 @@
+/* ============================================================
+   全局 CSS 变量与重置
+   浅色主题：白、灰、绿低饱和度配色，层次分明
+   ============================================================ */
+
+:root {
+  /* 背景层次（浅色渐进） */
+  --color-bg-base:    #f8f9fa;
+  --color-bg-surface: #ffffff;
+  --color-bg-elevated:#f4f5f6;
+  --color-bg-hover:   #e9ecef;
+
+  /* 边框 */
+  --color-border:     #dee2e6;
+  --color-border-light: #e9ecef;
+
+  /* 文字 */
+  --color-text-primary:   #212529;
+  --color-text-secondary: #6c757d;
+  --color-text-muted:     #adb5bd;
+
+  /* 强调色（低饱和度绿色） */
+  --color-accent:       #52b788;
+  --color-accent-hover: #40916c;
+  --color-accent-dim:   rgba(82, 183, 136, 0.1);
+
+  /* 状态色 */
+  --color-error:   #e63946;
+  --color-success: #52b788;
+  --color-warning: #f4a261;
+
+  /* 圆角 */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+
+  /* 阴影 */
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.08);
+  --shadow-md: 0 2px 8px rgba(0,0,0,0.1);
+
+  /* 过渡 */
+  --transition: 0.18s ease;
+
+  /* 侧边栏宽度 */
+  --sidebar-width: 220px;
+  --sidebar-collapsed-width: 72px;
+}
+
+/* 重置 */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body, #app {
+  height: 100%;
+  font-family: 'Inter', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+  font-size: 14px;
+  background: var(--color-bg-base);
+  color: var(--color-text-primary);
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: var(--color-accent); text-decoration: none; }
+a:hover { color: var(--color-accent-hover); }
+
+/* 滚动条美化 */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--color-bg-elevated); }
+::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--color-text-muted); }
+
+/* 通用按钮 */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 18px;
+  border-radius: var(--radius-md);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  transition: background var(--transition), color var(--transition), opacity var(--transition);
+}
+.btn-primary {
+  background: var(--color-accent);
+  color: #ffffff;
+}
+.btn-primary:hover { background: var(--color-accent-hover); }
+.btn-secondary {
+  background: var(--color-bg-elevated);
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border);
+}
+.btn-secondary:hover { background: var(--color-bg-hover); }
+.btn-ghost {
+  background: transparent;
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border);
+}
+.btn-ghost:hover { border-color: var(--color-accent); color: var(--color-accent); }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* 通用输入框 */
+.form-input {
+  width: 100%;
+  padding: 9px 12px;
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text-primary);
+  font-size: 14px;
+  outline: none;
+  transition: border-color var(--transition);
+}
+.form-input:focus { border-color: var(--color-accent); }
+.form-input::placeholder { color: var(--color-text-muted); }
+.form-input.error { border-color: var(--color-error); }
+
+/* 错误提示 */
+.form-error {
+  color: var(--color-error);
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+/* 卡片 */
+.card {
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+}
+
+/* Loading 骨架 */
+.loading-spinner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 0;
+  color: var(--color-text-muted);
+  font-size: 15px;
+  gap: 10px;
+}
+.spinner {
+  width: 20px; height: 20px;
+  border: 2px solid var(--color-border-light);
+  border-top-color: var(--color-accent);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* 页面标题 */
+.page-title {
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin-bottom: 8px;
+}
+.page-subtitle {
+  font-size: 14px;
+  color: var(--color-text-secondary);
+  margin-bottom: 24px;
+}
