@@ -4,5 +4,11 @@ import org.scse.smartcontractsearchengine.model.vo.ContractCheckResponse;
 
 public interface ContractCheckService {
 
-    ContractCheckResponse checkContract(String contractName, String sourceCode, String inputMode, String fileName, String model);
+    default ContractCheckResponse checkContract(String contractName, String sourceCode, String inputMode,
+                                                String fileName, String model) {
+        return checkContract(contractName, sourceCode, inputMode, fileName, model, true);
+    }
+
+    ContractCheckResponse checkContract(String contractName, String sourceCode, String inputMode,
+                                        String fileName, String model, boolean saveRecord);
 }

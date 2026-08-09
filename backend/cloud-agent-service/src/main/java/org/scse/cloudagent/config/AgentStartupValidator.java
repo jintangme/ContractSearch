@@ -9,9 +9,11 @@ import java.util.Set;
 @Component
 public class AgentStartupValidator {
     private final AgentProperties properties;
+    private final AgentPersistenceProperties persistenceProperties;
 
-    public AgentStartupValidator(AgentProperties properties) {
+    public AgentStartupValidator(AgentProperties properties, AgentPersistenceProperties persistenceProperties) {
         this.properties = properties;
+        this.persistenceProperties = persistenceProperties;
     }
 
     @PostConstruct
@@ -28,6 +30,10 @@ public class AgentStartupValidator {
                 && (properties.knowledge().databaseUrl().isBlank()
                 || properties.knowledge().databaseUsername().isBlank())) {
             throw new IllegalStateException("Knowledge database URL and username are required when Knowledge ingestion is enabled");
+        }
+        if (persistenceProperties.enabled()
+                && (persistenceProperties.url().isBlank() || persistenceProperties.username().isBlank())) {
+            throw new IllegalStateException("Agent persistence URL and username are required when persistence is enabled");
         }
         if (properties.miniLoop().enabled()) {
             validateFixedDependency("AGENT_CONTRACT_SERVICE_URL", properties.dependencies().contractServiceBaseUrl(),

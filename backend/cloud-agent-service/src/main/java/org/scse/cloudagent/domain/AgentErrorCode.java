@@ -11,6 +11,7 @@ public enum AgentErrorCode {
     TOOL_TIMEOUT,
     TOOL_POLICY_DENIED,
     PROVIDER_ERROR,
+    LOOP_DETECTED,
     BUDGET_EXCEEDED,
     INTERNAL_ERROR
 }

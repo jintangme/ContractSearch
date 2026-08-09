@@ -28,7 +28,8 @@ public class ContractCheckController {
                     request.getSourceCode(),
                     request.getInputMode(),
                     request.getFileName(),
-                    request.getModel()
+                    request.getModel(),
+                    !Boolean.FALSE.equals(request.getSaveRecord())
             );
             return ResponseResult.success(result);
         } catch (IllegalArgumentException e) {

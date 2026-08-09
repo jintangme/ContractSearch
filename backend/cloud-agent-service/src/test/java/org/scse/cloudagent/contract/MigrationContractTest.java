@@ -80,4 +80,17 @@ class MigrationContractTest {
             assertThat(sql).doesNotContain("drop column");
         }
     }
+
+    @Test
+    void sixthMigrationAddsAgentRunAuditFieldsWithoutDestructiveChanges() throws IOException {
+        try (var input = getClass().getResourceAsStream("/db/migration/V6__agent_run_audit.sql")) {
+            assertThat(input).isNotNull();
+            String sql = new String(input.readAllBytes(), StandardCharsets.UTF_8).toLowerCase();
+            assertThat(sql).contains("failure_message");
+            assertThat(sql).contains("retrieval_round_count");
+            assertThat(sql).contains("prompt_version");
+            assertThat(sql).doesNotContain("drop table");
+            assertThat(sql).doesNotContain("drop column");
+        }
+    }
 }

@@ -64,7 +64,8 @@ public class ContractCheckServiceImpl implements ContractCheckService {
     }
 
     @Override
-    public ContractCheckResponse checkContract(String contractName, String sourceCode, String inputMode, String fileName, String model) {
+    public ContractCheckResponse checkContract(String contractName, String sourceCode, String inputMode,
+                                               String fileName, String model, boolean saveRecord) {
         String modelUsed = AiModelRegistry.resolveModel(model);
         List<String> issues = new ArrayList<>();
 
@@ -91,7 +92,7 @@ public class ContractCheckServiceImpl implements ContractCheckService {
                     .modelUsed(modelUsed)
                     .saved(false)
                     .build();
-            saveRecordSafely(response, contractName, sourceCode, inputMode, fileName, "failed");
+            if (saveRecord) saveRecordSafely(response, contractName, sourceCode, inputMode, fileName, "failed");
             return response;
         }
 
@@ -181,12 +182,12 @@ public class ContractCheckServiceImpl implements ContractCheckService {
         if (!validSolidity) {
             base.setAiSummary("该源码未通过基础 Solidity 特征检查，不建议继续进入 AI 深度预审。");
             base.setAiSuggestions(List.of("请补充完整的 Solidity 源码", "确认包含 pragma 与 contract 定义"));
-            saveRecordSafely(base, contractName, code, inputMode, fileName, "success");
+            if (saveRecord) saveRecordSafely(base, contractName, code, inputMode, fileName, "success");
             return base;
         }
 
         enrichWithAi(base, contractName, code, model, modelUsed);
-        saveRecordSafely(base, contractName, code, inputMode, fileName, "success");
+        if (saveRecord) saveRecordSafely(base, contractName, code, inputMode, fileName, "success");
         return base;
     }
 

@@ -9,7 +9,8 @@ import java.util.Set;
 @Component
 public class MiniLoopToolPolicy {
     public static final Set<String> ALLOWED_TOOLS = Set.of(
-            "search_contracts.v1", "retrieve_knowledge.v1", "get_contract.v1", "compile_contract.v1"
+            "search_contracts.v1", "retrieve_knowledge.v1", "get_contract.v1",
+            "compile_contract.v1", "precheck_contract.v1"
     );
 
     public void authorize(AgentTool tool) {

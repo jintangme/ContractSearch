@@ -28,4 +28,10 @@ public class ContractCheckRequest {
      * 用户选择的真实 AI 模型，例如 glm-5.1
      */
     private String model;
+
+    /**
+     * Whether to persist a user precheck record. Existing UI requests default to true;
+     * read-only Agent tool calls explicitly set this to false.
+     */
+    private Boolean saveRecord;
 }

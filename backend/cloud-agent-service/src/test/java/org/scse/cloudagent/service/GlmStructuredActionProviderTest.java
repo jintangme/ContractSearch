@@ -40,6 +40,18 @@ class GlmStructuredActionProviderTest {
     }
 
     @Test
+    void parsesAuditableAbstainDecision() throws Exception {
+        GlmStructuredActionProvider provider = provider("{}");
+        AgentDecision decision = provider.parse(objectMapper.readTree("""
+                {"choices":[{"message":{"content":"{\\"action\\":\\"ABSTAIN\\",\\"answer\\":\\"insufficient evidence\\",\\"reasonSummary\\":\\"No verifiable source\\",\\"evidenceGap\\":\\"Missing contract source\\",\\"citedEvidenceIds\\":[],\\"stopReason\\":\\"EVIDENCE_INSUFFICIENT\\"}"}}]}
+                """));
+
+        assertThat(decision.type()).isEqualTo(AgentDecision.Type.ABSTAIN);
+        assertThat(decision.evidenceGap()).isEqualTo("Missing contract source");
+        assertThat(decision.stopReason()).isEqualTo("EVIDENCE_INSUFFICIENT");
+    }
+
+    @Test
     void repairsOnlyOnceThenFailsClosed() {
         AtomicInteger calls = new AtomicInteger();
         var transport = (GlmHttpTransport) request -> {

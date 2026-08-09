@@ -28,6 +28,11 @@ agent:
     url: ${AGENT_DB_URL:}
     username: ${AGENT_DB_USERNAME:}
     password: ${AGENT_DB_PASSWORD:}
+  persistence:
+    enabled: ${AGENT_PERSISTENCE_ENABLED:false}
+    url: ${AGENT_PERSISTENCE_DB_URL:${AGENT_DB_URL:}}
+    username: ${AGENT_PERSISTENCE_DB_USERNAME:${AGENT_DB_USERNAME:}}
+    password: ${AGENT_PERSISTENCE_DB_PASSWORD:${AGENT_DB_PASSWORD:}}
   mini-loop:
     enabled: ${AGENT_MINI_LOOP_ENABLED:false}
     max-steps: ${AGENT_MAX_STEPS:6}

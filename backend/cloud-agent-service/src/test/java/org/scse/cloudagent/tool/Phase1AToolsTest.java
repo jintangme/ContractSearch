@@ -3,6 +3,7 @@ package org.scse.cloudagent.tool;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.scse.cloudagent.domain.SideEffect;
+import org.scse.cloudagent.config.AgentProperties;
 
 import java.util.List;
 import java.util.Map;
@@ -61,5 +62,28 @@ class Phase1AToolsTest {
         assertThat(tool.definition().sideEffect()).isEqualTo(SideEffect.EXECUTE_SANDBOXED);
         assertThat(result.output()).containsEntry("success", true).doesNotContainKey("bytecode");
         assertThat(result.evidence().get(0).excerpt()).contains("Compilation succeeded", "0.8.35");
+    }
+
+    @Test
+    void precheckIsReadOnlyAtTheApplicationBoundaryAndReturnsEvidence() throws Exception {
+        ContractCatalogClient catalog = mock(ContractCatalogClient.class);
+        PrecheckClient client = mock(PrecheckClient.class);
+        AgentProperties properties = new AgentProperties(false, "", "glm-4.5-air",
+                new AgentProperties.Provider("http://provider.invalid", "test-key", 2000, false),
+                new AgentProperties.Migrations(false, "", "", ""));
+        when(catalog.getContract(42, 7)).thenReturn(Map.of(
+                "contractName", "PointsToken", "sourceCode", "pragma solidity ^0.8.20; contract PointsToken {}"));
+        when(client.precheck("PointsToken", "pragma solidity ^0.8.20; contract PointsToken {}",
+                "glm-4.5-air", 7)).thenReturn(Map.of(
+                "riskLevel", "low", "conclusion", "Suitable for further review", "saved", false));
+
+        PrecheckContractTool tool = new PrecheckContractTool(catalog, client, properties);
+        ToolExecutionResult result = tool.execute(objectMapper.readTree("{\"contractId\":42}"), context);
+
+        assertThat(tool.definition().sideEffect()).isEqualTo(SideEffect.EXECUTE_SANDBOXED);
+        assertThat(result.output()).containsEntry("saved", false).containsEntry("riskLevel", "low");
+        assertThat(result.evidence().get(0).sourceType()).isEqualTo("CONTRACT_PRECHECK");
+        verify(client).precheck("PointsToken", "pragma solidity ^0.8.20; contract PointsToken {}",
+                "glm-4.5-air", 7);
     }
 }

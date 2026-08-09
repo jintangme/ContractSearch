@@ -42,6 +42,7 @@ public class InMemoryAgentRunService {
     private final ObjectMapper objectMapper;
     private final AgentProperties properties;
     private final MiniAgentLoopEngine miniAgentLoopEngine;
+    private final AgentRunArchive archive;
     private final Counter createdCounter;
     private final Counter completedCounter;
 
@@ -51,6 +52,7 @@ public class InMemoryAgentRunService {
                                    ObjectMapper objectMapper,
                                    AgentProperties properties,
                                    MiniAgentLoopEngine miniAgentLoopEngine,
+                                   AgentRunArchive archive,
                                    MeterRegistry meterRegistry) {
         this.stateMachine = stateMachine;
         this.toolRegistry = toolRegistry;
@@ -58,6 +60,7 @@ public class InMemoryAgentRunService {
         this.objectMapper = objectMapper;
         this.properties = properties;
         this.miniAgentLoopEngine = miniAgentLoopEngine;
+        this.archive = archive;
         this.createdCounter = Counter.builder("agent.runs.created").register(meterRegistry);
         this.completedCounter = Counter.builder("agent.runs.completed").register(meterRegistry);
     }
@@ -68,6 +71,7 @@ public class InMemoryAgentRunService {
         SessionResponse session = new SessionResponse(id, userId, title,
                 request.workspaceContext() == null ? Map.of() : Map.copyOf(request.workspaceContext()), Instant.now());
         sessions.put(id, session);
+        archive.saveSession(session);
         return session;
     }
 
@@ -99,7 +103,9 @@ public class InMemoryAgentRunService {
         } else {
             executeMockLoop(run);
         }
-        return run.snapshot();
+        AgentRun snapshot = run.snapshot();
+        archive.saveRun(snapshot);
+        return snapshot;
     }
 
     public AgentRun getOwned(long userId, UUID runId) {

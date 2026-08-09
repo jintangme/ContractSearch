@@ -30,14 +30,15 @@ class MiniAgentLoopEngineTest {
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Test
-    void completesBoundedThreeToolLoopWithEvidenceCitations() {
+    void completesBoundedFourToolLoopWithEvidenceCitations() {
         List<AgentDecisionRequest> requests = new ArrayList<>();
         StructuredActionProvider provider = request -> {
             requests.add(request);
             return switch (request.step()) {
-                case 1 -> AgentDecision.toolCall("search_contracts.v1", "{\"query\":\"ERC20\",\"mode\":\"code\"}", "search");
+                case 1 -> AgentDecision.toolCall("retrieve_knowledge.v1", "{\"query\":\"ERC20 security\"}", "retrieve");
                 case 2 -> AgentDecision.toolCall("get_contract.v1", "{\"contractId\":1}", "get");
                 case 3 -> AgentDecision.toolCall("compile_contract.v1", "{\"contractId\":1}", "compile");
+                case 4 -> AgentDecision.toolCall("precheck_contract.v1", "{\"contractId\":1}", "precheck");
                 default -> AgentDecision.finalAnswer("Contract 1 compiles in the sandbox.",
                         request.evidence().stream().map(item -> item.id()).toList(), "final");
             };
@@ -47,26 +48,40 @@ class MiniAgentLoopEngineTest {
 
         assertThat(result.state()).isEqualTo(AgentRunState.COMPLETE);
         assertThat(result.errorCode()).isNull();
-        assertThat(result.steps()).isEqualTo(4);
-        assertThat(result.toolCalls()).isEqualTo(3);
+        assertThat(result.steps()).isEqualTo(5);
+        assertThat(result.toolCalls()).isEqualTo(4);
         assertThat(result.retrievalRounds()).isEqualTo(1);
-        assertThat(result.evidence()).hasSize(3);
+        assertThat(result.evidence()).hasSize(4);
         assertThat(result.answer()).contains("Evidence:");
         assertThat(requests.get(1).observations().get(0)).contains("UNTRUSTED_TOOL_OUTPUT");
         assertThat(result.events()).anyMatch(event -> "tool.requested".equals(event.type()));
     }
 
     @Test
-    void stopsAtRetrievalBudgetWithExplicitTerminalError() {
+    void blocksAnIdenticalRepeatedToolInvocation() {
         StructuredActionProvider provider = request -> AgentDecision.toolCall(
                 "search_contracts.v1", "{\"query\":\"ERC20\",\"mode\":\"code\"}", "search");
         MiniLoopResult result = engine(provider, new AgentProperties.MiniLoop(true, 6, 4, 2))
                 .execute(UUID.randomUUID(), 7, "Search forever");
 
         assertThat(result.state()).isEqualTo(AgentRunState.FAILED);
-        assertThat(result.errorCode()).isEqualTo(AgentErrorCode.BUDGET_EXCEEDED);
-        assertThat(result.retrievalRounds()).isEqualTo(2);
+        assertThat(result.errorCode()).isEqualTo(AgentErrorCode.LOOP_DETECTED);
+        assertThat(result.retrievalRounds()).isEqualTo(1);
         assertThat(result.events().get(result.events().size() - 1).type()).isEqualTo("run.failed");
+    }
+
+    @Test
+    void allowsExplicitAbstentionWhenNoEvidenceCanBeObtained() {
+        StructuredActionProvider provider = request -> AgentDecision.abstain(
+                "I cannot verify this claim with the available tools.", List.of(),
+                "No usable evidence is available", "The requested contract is unavailable", "abstain");
+        MiniLoopResult result = engine(provider, new AgentProperties.MiniLoop(true, 6, 4, 2))
+                .execute(UUID.randomUUID(), 7, "Verify an unavailable contract");
+
+        assertThat(result.state()).isEqualTo(AgentRunState.COMPLETE);
+        assertThat(result.errorCode()).isNull();
+        assertThat(result.answer()).contains("cannot verify");
+        assertThat(result.events()).anyMatch(event -> event.data().toString().contains("EVIDENCE_INSUFFICIENT"));
     }
 
     @Test
@@ -83,8 +98,10 @@ class MiniAgentLoopEngineTest {
     private MiniAgentLoopEngine engine(StructuredActionProvider provider, AgentProperties.MiniLoop budget) {
         ToolRegistry registry = new ToolRegistry(List.of(
                 new StubTool("search_contracts.v1", SideEffect.READ),
+                new StubTool("retrieve_knowledge.v1", SideEffect.READ),
                 new StubTool("get_contract.v1", SideEffect.READ),
-                new StubTool("compile_contract.v1", SideEffect.EXECUTE_SANDBOXED)
+                new StubTool("compile_contract.v1", SideEffect.EXECUTE_SANDBOXED),
+                new StubTool("precheck_contract.v1", SideEffect.EXECUTE_SANDBOXED)
         ));
         AgentProperties properties = new AgentProperties(
                 true,

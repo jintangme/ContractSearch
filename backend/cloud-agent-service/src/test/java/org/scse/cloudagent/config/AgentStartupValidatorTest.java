@@ -15,7 +15,7 @@ class AgentStartupValidatorTest {
                 new AgentProperties.Knowledge(true, "jdbc:postgresql://127.0.0.1/test", "user", "password",
                         "contractsearch", "test", 10));
 
-        assertThatThrownBy(() -> new AgentStartupValidator(properties).validate())
+        assertThatThrownBy(() -> validator(properties).validate())
                 .hasMessageContaining("AGENT_INTERNAL_TOKEN");
     }
 
@@ -25,7 +25,7 @@ class AgentStartupValidatorTest {
                 new AgentProperties.Provider("https://open.bigmodel.cn/api/paas/v4", "", 1000, false),
                 new AgentProperties.Dependencies("http://127.0.0.1:18081", "http://127.0.0.1:19090", 1000, 1000));
 
-        assertThatThrownBy(() -> new AgentStartupValidator(properties).validate())
+        assertThatThrownBy(() -> validator(properties).validate())
                 .hasMessageContaining("ZHIPU_API_KEY");
     }
 
@@ -35,8 +35,23 @@ class AgentStartupValidatorTest {
                 new AgentProperties.Provider("https://open.bigmodel.cn/api/paas/v4", "test-key", 1000, false),
                 new AgentProperties.Dependencies("http://example.com", "http://127.0.0.1:19090", 1000, 1000));
 
-        assertThatThrownBy(() -> new AgentStartupValidator(properties).validate())
+        assertThatThrownBy(() -> validator(properties).validate())
                 .hasMessageContaining("allowlist");
+    }
+
+    @Test
+    void refusesEnabledPersistenceWithoutDatabaseIdentity() {
+        AgentProperties properties = properties(
+                new AgentProperties.Provider("https://open.bigmodel.cn/api/paas/v4", "test-key", 1000, false),
+                new AgentProperties.Dependencies("http://127.0.0.1:18081", "http://127.0.0.1:19090", 1000, 1000));
+
+        assertThatThrownBy(() -> new AgentStartupValidator(properties,
+                new AgentPersistenceProperties(true, "", "", "")).validate())
+                .hasMessageContaining("persistence URL and username");
+    }
+
+    private AgentStartupValidator validator(AgentProperties properties) {
+        return new AgentStartupValidator(properties, new AgentPersistenceProperties(false, "", "", ""));
     }
 
     private AgentProperties properties(AgentProperties.Provider provider, AgentProperties.Dependencies dependencies) {

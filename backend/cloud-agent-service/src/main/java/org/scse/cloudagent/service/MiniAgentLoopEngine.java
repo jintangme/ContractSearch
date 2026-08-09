@@ -78,10 +78,14 @@ public class MiniAgentLoopEngine {
                 Map<String, Object> modelAction = new LinkedHashMap<>();
                 modelAction.put("step", context.steps);
                 modelAction.put("actionType", decision.type().name());
-                modelAction.put("rawStructuredOutput", decision.rawStructuredOutput());
+                modelAction.put("reasonSummary", decision.reasonSummary());
+                modelAction.put("evidenceGap", decision.evidenceGap());
+                modelAction.put("citedEvidenceIds", decision.evidenceIds());
+                modelAction.put("stopReason", decision.stopReason());
                 modelAction.put("provider", decision.providerMetadata());
                 addEvent(context, "model.action", Map.copyOf(modelAction));
-                if (decision.type() == AgentDecision.Type.FINAL_ANSWER) {
+                if (decision.type() == AgentDecision.Type.FINAL_ANSWER
+                        || decision.type() == AgentDecision.Type.ABSTAIN) {
                     return complete(context, decision);
                 }
                 executeTool(context, runId, userId, decision);
@@ -110,6 +114,11 @@ public class MiniAgentLoopEngine {
             throw new AgentToolException(AgentErrorCode.BUDGET_EXCEEDED, "Maximum retrieval rounds exceeded");
         }
         JsonNode arguments = validator.parseObject(decision.argumentsJson());
+        String invocationKey = tool.definition().name() + ":" + arguments.toString();
+        if (!context.invocations.add(invocationKey)) {
+            throw new AgentToolException(AgentErrorCode.LOOP_DETECTED,
+                    "Repeated identical tool invocation was blocked: " + tool.definition().name());
+        }
         UUID toolCallId = UUID.randomUUID();
         AgentSignal signal = context.state == AgentRunState.PLAN ? AgentSignal.REQUEST_TOOL : AgentSignal.RETRY_TOOL;
         move(context, signal, "tool.requested", Map.of(
@@ -138,7 +147,8 @@ public class MiniAgentLoopEngine {
     private MiniLoopResult complete(Context context, AgentDecision decision) {
         Set<UUID> available = new LinkedHashSet<>();
         context.evidence.forEach(item -> available.add(item.id()));
-        if (decision.evidenceIds().isEmpty()) {
+        boolean abstained = decision.type() == AgentDecision.Type.ABSTAIN;
+        if (!abstained && decision.evidenceIds().isEmpty()) {
             throw new AgentToolException(AgentErrorCode.PROVIDER_ERROR,
                     "Final answer must cite at least one evidence ID");
         }
@@ -147,14 +157,21 @@ public class MiniAgentLoopEngine {
                     "Final answer cited an unknown evidence ID");
         }
         move(context, AgentSignal.START_SYNTHESIS, "run.synthesizing",
-                Map.of("evidenceIds", decision.evidenceIds()));
-        context.answer = decision.answer() + "\n\nEvidence: "
-                + decision.evidenceIds().stream().map(id -> "[" + id + "]").reduce((a, b) -> a + " " + b).orElse("");
+                Map.of("evidenceIds", decision.evidenceIds(), "abstained", abstained,
+                        "stopReason", decision.stopReason()));
+        context.answer = decision.answer();
+        if (!decision.evidenceIds().isEmpty()) {
+            context.answer += "\n\nEvidence: "
+                    + decision.evidenceIds().stream().map(id -> "[" + id + "]")
+                    .reduce((a, b) -> a + " " + b).orElse("");
+        }
         move(context, AgentSignal.COMPLETE, "run.completed", Map.of(
                 "answer", context.answer,
                 "steps", context.steps,
                 "toolCalls", context.toolCalls,
-                "retrievalRounds", context.retrievalRounds
+                "retrievalRounds", context.retrievalRounds,
+                "abstained", abstained,
+                "stopReason", decision.stopReason()
         ));
         return result(context, null, null);
     }
@@ -211,5 +228,6 @@ public class MiniAgentLoopEngine {
         private final List<AgentEvent> events = new ArrayList<>();
         private final List<EvidenceItem> evidence = new ArrayList<>();
         private final List<String> observations = new ArrayList<>();
+        private final Set<String> invocations = new LinkedHashSet<>();
     }
 }
