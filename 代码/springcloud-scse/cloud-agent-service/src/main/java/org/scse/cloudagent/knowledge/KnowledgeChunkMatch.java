@@ -4,7 +4,12 @@ import java.util.UUID;
 
 public record KnowledgeChunkMatch(
         UUID chunkId,
-        long contractId,
+        UUID sourceId,
+        String sourceKind,
+        String sourceRef,
+        String sourceTitle,
+        String sourceUrl,
+        Long contractId,
         String contractName,
         String chunkKind,
         String symbolName,

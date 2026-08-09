@@ -68,4 +68,16 @@ class MigrationContractTest {
             assertThat(sql).doesNotContain("alter table");
         }
     }
+
+    @Test
+    void fifthMigrationAllowsAuthoritativeNonContractKnowledge() throws IOException {
+        try (var input = getClass().getResourceAsStream("/db/migration/V5__authoritative_knowledge.sql")) {
+            assertThat(input).isNotNull();
+            String sql = new String(input.readAllBytes(), StandardCharsets.UTF_8).toLowerCase();
+            assertThat(sql).contains("alter column existing_contract_id drop not null");
+            assertThat(sql).contains("source_kind, trust_level");
+            assertThat(sql).doesNotContain("drop table");
+            assertThat(sql).doesNotContain("drop column");
+        }
+    }
 }

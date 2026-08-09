@@ -71,13 +71,18 @@ public class RetrieveKnowledgeTool implements AgentTool {
         List<EvidenceDraft> evidence = new ArrayList<>();
         for (Map<String, Object> result : results) {
             Object contractId = result.get("contractId");
-            if (contractId == null) continue;
-            String contractName = text(result.get("contractName"), "Contract " + contractId);
+            Object sourceId = result.get("sourceId");
+            if (contractId == null && sourceId == null) continue;
+            boolean reference = contractId == null;
+            String title = reference
+                    ? text(result.get("sourceTitle"), "Authoritative reference")
+                    : text(result.get("contractName"), "Contract " + contractId);
             List<Map<String, Object>> chunks = result.get("chunks") instanceof List<?> list
                     ? (List<Map<String, Object>>) (List<?>) list : List.of();
             if (chunks.isEmpty()) {
+                if (reference) continue;
                 evidence.add(new EvidenceDraft("KNOWLEDGE_CONTRACT", "contract:" + contractId,
-                        contractName, truncate(text(result.get("description"), "Contract retrieval match"), 2000),
+                        title, truncate(text(result.get("description"), "Contract retrieval match"), 2000),
                         TrustLevel.COMMUNITY,
                         Map.of("contractId", contractId, "query", query,
                                 "channels", result.getOrDefault("channelRanks", Map.of()),
@@ -87,14 +92,17 @@ public class RetrieveKnowledgeTool implements AgentTool {
             for (Map<String, Object> chunk : chunks) {
                 String chunkId = text(chunk.get("chunkId"), "unknown");
                 Map<String, Object> metadata = new java.util.LinkedHashMap<>();
-                metadata.put("contractId", contractId);
+                if (contractId != null) metadata.put("contractId", contractId);
+                if (sourceId != null) metadata.put("sourceId", sourceId);
                 metadata.put("chunkId", chunkId);
                 metadata.put("query", query);
+                copy(metadata, result, "sourceKind", "sourceRef", "sourceUrl");
                 copy(metadata, chunk, "filePath", "lineStart", "lineEnd", "contentHash", "symbol");
                 metadata.put("channels", result.getOrDefault("channelRanks", Map.of()));
                 metadata.put("contentBoundary", "UNTRUSTED");
-                evidence.add(new EvidenceDraft("KNOWLEDGE_CHUNK", "chunk:" + chunkId,
-                        contractName + " / " + text(chunk.get("symbol"), text(chunk.get("kind"), "chunk")),
+                evidence.add(new EvidenceDraft(reference ? "AUTHORITATIVE_REFERENCE" : "KNOWLEDGE_CHUNK",
+                        "chunk:" + chunkId,
+                        title + " / " + text(chunk.get("symbol"), text(chunk.get("kind"), "chunk")),
                         truncate(text(chunk.get("excerpt"), "Knowledge chunk match"), 3000),
                         trust(chunk.get("trustLevel")), Map.copyOf(metadata)));
             }

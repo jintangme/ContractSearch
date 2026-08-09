@@ -9,6 +9,7 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 @Service
 @ConditionalOnProperty(prefix = "agent.knowledge", name = "enabled", havingValue = "true")
@@ -36,27 +37,54 @@ public class KnowledgeRetrievalService {
             degraded.add("chunk_text");
         }
 
-        Map<Long, Candidate> candidates = new LinkedHashMap<>();
+        Map<String, Candidate> candidates = new LinkedHashMap<>();
         addCatalogChannel(candidates, semantic, "semantic", 0);
         addCatalogChannel(candidates, code, "code", 1);
-        for (int rank = 0; rank < chunks.size(); rank++) {
-            KnowledgeChunkMatch chunk = chunks.get(rank);
-            Candidate candidate = candidates.computeIfAbsent(chunk.contractId(), Candidate::new);
-            if (!candidate.channelRanks.containsKey("chunkText")) {
-                candidate.score += reciprocal(rank + 1);
-                candidate.channelRanks.put("chunkText", rank + 1);
+        int authoritativeRank = 0;
+        int contractChunkRank = 0;
+        for (KnowledgeChunkMatch chunk : chunks) {
+            boolean authoritative = chunk.contractId() == null;
+            int rank = authoritative ? ++authoritativeRank : ++contractChunkRank;
+            String channel = authoritative ? "authoritativeText" : "contractChunkText";
+            String key = chunk.contractId() == null
+                    ? "source:" + chunk.sourceId() : "contract:" + chunk.contractId();
+            Candidate candidate = candidates.computeIfAbsent(key,
+                    ignored -> new Candidate(chunk.contractId()));
+            if (!candidate.channelRanks.containsKey(channel)) {
+                candidate.score += reciprocal(rank);
+                candidate.channelRanks.put(channel, rank);
             }
+            candidate.mergeSource(chunk);
             if (candidate.contractName == null) candidate.contractName = chunk.contractName();
             if (candidate.chunks.size() < 3) candidate.chunks.add(chunkMap(chunk));
         }
 
-        List<Map<String, Object>> results = candidates.values().stream()
+        List<Candidate> ranked = candidates.values().stream()
                 .sorted(Comparator.comparingDouble((Candidate item) -> item.score).reversed()
-                        .thenComparingLong(item -> item.contractId))
-                .limit(boundedLimit)
+                        .thenComparing(Candidate::stableKey))
+                .toList();
+        List<Map<String, Object>> results = diversify(ranked, boundedLimit).stream()
                 .map(Candidate::toMap)
                 .toList();
         return new KnowledgeRetrievalResponse(query, results, degraded.stream().distinct().toList());
+    }
+
+    private List<Candidate> diversify(List<Candidate> ranked, int limit) {
+        List<Candidate> selected = new ArrayList<>(ranked.stream().limit(limit).toList());
+        if (limit < 2 || ranked.isEmpty()) return selected;
+        ensureKind(selected, ranked, true, limit);
+        ensureKind(selected, ranked, false, limit);
+        return selected;
+    }
+
+    private void ensureKind(List<Candidate> selected, List<Candidate> ranked,
+                            boolean reference, int limit) {
+        if (selected.stream().anyMatch(item -> item.isReference() == reference)) return;
+        Candidate candidate = ranked.stream().filter(item -> item.isReference() == reference)
+                .findFirst().orElse(null);
+        if (candidate == null || selected.contains(candidate)) return;
+        if (selected.size() < limit) selected.add(candidate);
+        else selected.set(selected.size() - 1, candidate);
     }
 
     private List<Map<String, Object>> safeCatalogSearch(String query, String mode, long userId,
@@ -69,13 +97,14 @@ public class KnowledgeRetrievalService {
         }
     }
 
-    private void addCatalogChannel(Map<Long, Candidate> candidates, List<Map<String, Object>> results,
+    private void addCatalogChannel(Map<String, Candidate> candidates, List<Map<String, Object>> results,
                                    String channel, int channelOrder) {
         for (int rank = 0; rank < results.size(); rank++) {
             Map<String, Object> result = results.get(rank);
             Long contractId = asLong(result.get("id"));
             if (contractId == null) continue;
-            Candidate candidate = candidates.computeIfAbsent(contractId, Candidate::new);
+            Candidate candidate = candidates.computeIfAbsent("contract:" + contractId,
+                    ignored -> new Candidate(contractId));
             candidate.score += reciprocal(rank + 1);
             candidate.channelRanks.put(channel, rank + 1);
             candidate.catalogOrder = Math.min(candidate.catalogOrder, channelOrder);
@@ -90,6 +119,11 @@ public class KnowledgeRetrievalService {
     private Map<String, Object> chunkMap(KnowledgeChunkMatch chunk) {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("chunkId", chunk.chunkId().toString());
+        result.put("sourceId", chunk.sourceId().toString());
+        put(result, "sourceKind", chunk.sourceKind());
+        put(result, "sourceRef", chunk.sourceRef());
+        put(result, "sourceTitle", chunk.sourceTitle());
+        put(result, "sourceUrl", chunk.sourceUrl());
         put(result, "kind", chunk.chunkKind());
         put(result, "symbol", chunk.symbolName());
         put(result, "signature", chunk.signature());
@@ -117,7 +151,13 @@ public class KnowledgeRetrievalService {
     }
 
     private static final class Candidate {
-        private final long contractId;
+        private final Long contractId;
+        private UUID sourceId;
+        private String sourceKind;
+        private String sourceRef;
+        private String sourceTitle;
+        private String sourceUrl;
+        private String trustLevel;
         private double score;
         private int catalogOrder = Integer.MAX_VALUE;
         private String contractName;
@@ -127,8 +167,25 @@ public class KnowledgeRetrievalService {
         private final Map<String, Integer> channelRanks = new LinkedHashMap<>();
         private final List<Map<String, Object>> chunks = new ArrayList<>();
 
-        private Candidate(long contractId) {
+        private Candidate(Long contractId) {
             this.contractId = contractId;
+        }
+
+        private void mergeSource(KnowledgeChunkMatch chunk) {
+            if (sourceId == null) sourceId = chunk.sourceId();
+            if (sourceKind == null) sourceKind = chunk.sourceKind();
+            if (sourceRef == null) sourceRef = chunk.sourceRef();
+            if (sourceTitle == null) sourceTitle = chunk.sourceTitle();
+            if (sourceUrl == null) sourceUrl = chunk.sourceUrl();
+            if (trustLevel == null) trustLevel = chunk.trustLevel();
+        }
+
+        private boolean isReference() {
+            return contractId == null;
+        }
+
+        private String stableKey() {
+            return contractId == null ? "source:" + sourceId : "contract:" + contractId;
         }
 
         private void mergeCatalog(Map<String, Object> result) {
@@ -140,7 +197,13 @@ public class KnowledgeRetrievalService {
 
         private Map<String, Object> toMap() {
             Map<String, Object> result = new LinkedHashMap<>();
-            result.put("contractId", contractId);
+            if (contractId != null) result.put("contractId", contractId);
+            if (sourceId != null) result.put("sourceId", sourceId.toString());
+            putValue(result, "sourceKind", sourceKind);
+            putValue(result, "sourceRef", sourceRef);
+            putValue(result, "sourceTitle", sourceTitle);
+            putValue(result, "sourceUrl", sourceUrl);
+            putValue(result, "trustLevel", trustLevel);
             putValue(result, "contractName", contractName);
             putValue(result, "category", category);
             putValue(result, "description", description);

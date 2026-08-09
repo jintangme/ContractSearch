@@ -29,13 +29,44 @@ public class JdbcKnowledgeRetrievalRepository implements KnowledgeRetrievalRepos
 
     @Override
     public List<KnowledgeChunkMatch> searchChunks(String query, int limit) {
-        String tsQuery = toTsQuery(query);
+        List<String> tokens = tokens(query);
+        String tsQuery = String.join(" | ", tokens);
         if (tsQuery.isBlank()) return List.of();
+        int boundedLimit = Math.max(1, Math.min(limit, 50));
+        try (Connection connection = connection()) {
+            List<KnowledgeChunkMatch> matches = new ArrayList<>();
+            matches.addAll(searchChannel(connection, tsQuery, tokens, boundedLimit, true));
+            matches.addAll(searchChannel(connection, tsQuery, tokens, boundedLimit, false));
+            return List.copyOf(matches);
+        } catch (SQLException exception) {
+            throw new KnowledgeStoreException("Unable to search Knowledge chunks", exception);
+        }
+    }
+
+    private List<KnowledgeChunkMatch> searchChannel(Connection connection, String tsQuery,
+                                                     List<String> tokens,
+                                                     int limit, boolean authoritative) throws SQLException {
+        String scope = authoritative
+                ? "ks.existing_contract_id IS NULL"
+                : "ks.existing_contract_id IS NOT NULL";
         String sql = """
-                SELECT ks.chunk_id, ks.existing_contract_id, sc.contract_name,
+                SELECT ks.chunk_id, s.id AS source_id, s.source_kind, s.source_ref,
+                       s.metadata->>'title' AS source_title,
+                       s.metadata->>'sourceUrl' AS source_url,
+                       ks.existing_contract_id, sc.contract_name,
                        c.chunk_kind, c.symbol_name, c.signature, c.file_path,
                        c.line_start, c.line_end, left(c.content, 4000) AS excerpt,
                        c.content_hash, s.trust_level,
+                       EXISTS (
+                         SELECT 1 FROM unnest(?::text[]) AS query_token(token)
+                         WHERE lower(regexp_replace(d.file_path, '[^A-Za-z0-9_$]', '', 'g'))
+                               LIKE '%%' || query_token.token
+                       ) AS exact_source_key_match,
+                       (SELECT count(*) FROM unnest(?::text[]) AS query_token(token)
+                        WHERE to_tsvector('simple', concat_ws(' ', s.source_ref, s.metadata->>'title'))
+                              @@ plainto_tsquery('simple', query_token.token)) AS source_coverage,
+                       (SELECT count(*) FROM unnest(?::text[]) AS query_token(token)
+                        WHERE ks.search_vector @@ plainto_tsquery('simple', query_token.token)) AS token_coverage,
                        ts_rank_cd(ks.search_vector, to_tsquery('simple', ?)) AS text_score
                 FROM knowledge_chunk_search ks
                 JOIN knowledge_corpus_version cv ON cv.id = ks.corpus_version_id
@@ -45,23 +76,33 @@ public class JdbcKnowledgeRetrievalRepository implements KnowledgeRetrievalRepos
                 LEFT JOIN smart_contract sc ON sc.id = ks.existing_contract_id
                 WHERE cv.corpus_name = ? AND cv.version = ?
                   AND ks.search_vector @@ to_tsquery('simple', ?)
-                ORDER BY text_score DESC, ks.existing_contract_id, c.ordinal
+                  AND %s
+                ORDER BY exact_source_key_match DESC, source_coverage DESC,
+                         token_coverage DESC, text_score DESC,
+                         ks.existing_contract_id, c.ordinal
                 LIMIT ?
-                """;
+                """.formatted(scope);
         List<KnowledgeChunkMatch> matches = new ArrayList<>();
         AgentProperties.Knowledge knowledge = properties.knowledge();
-        try (Connection connection = connection();
-             PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setString(1, tsQuery);
-            statement.setString(2, knowledge.corpusName());
-            statement.setString(3, knowledge.corpusVersion());
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setArray(1, connection.createArrayOf("text", tokens.toArray()));
+            statement.setArray(2, connection.createArrayOf("text", tokens.toArray()));
+            statement.setArray(3, connection.createArrayOf("text", tokens.toArray()));
             statement.setString(4, tsQuery);
-            statement.setInt(5, Math.max(1, Math.min(limit, 100)));
+            statement.setString(5, knowledge.corpusName());
+            statement.setString(6, knowledge.corpusVersion());
+            statement.setString(7, tsQuery);
+            statement.setInt(8, limit);
             try (ResultSet resultSet = statement.executeQuery()) {
                 while (resultSet.next()) {
                     matches.add(new KnowledgeChunkMatch(
                             resultSet.getObject("chunk_id", java.util.UUID.class),
-                            resultSet.getLong("existing_contract_id"),
+                            resultSet.getObject("source_id", java.util.UUID.class),
+                            resultSet.getString("source_kind"),
+                            resultSet.getString("source_ref"),
+                            resultSet.getString("source_title"),
+                            resultSet.getString("source_url"),
+                            resultSet.getObject("existing_contract_id", Long.class),
                             resultSet.getString("contract_name"),
                             resultSet.getString("chunk_kind"),
                             resultSet.getString("symbol_name"),
@@ -76,19 +117,21 @@ public class JdbcKnowledgeRetrievalRepository implements KnowledgeRetrievalRepos
                     ));
                 }
             }
-            return List.copyOf(matches);
-        } catch (SQLException exception) {
-            throw new KnowledgeStoreException("Unable to search Knowledge chunks", exception);
         }
+        return List.copyOf(matches);
     }
 
     static String toTsQuery(String query) {
+        return String.join(" | ", tokens(query));
+    }
+
+    private static List<String> tokens(String query) {
         Matcher matcher = QUERY_TOKEN.matcher(query == null ? "" : query);
         Set<String> tokens = new LinkedHashSet<>();
         while (matcher.find() && tokens.size() < 12) {
             tokens.add(matcher.group().toLowerCase(Locale.ROOT));
         }
-        return String.join(" | ", tokens);
+        return List.copyOf(tokens);
     }
 
     private Connection connection() throws SQLException {
