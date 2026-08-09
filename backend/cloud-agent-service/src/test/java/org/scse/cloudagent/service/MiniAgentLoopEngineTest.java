@@ -92,6 +92,29 @@ class MiniAgentLoopEngineTest {
     }
 
     @Test
+    void routesGeneralKnowledgeQuestionToOneKnowledgeRetrievalThenAnswer() {
+        List<AgentDecisionRequest> requests = new ArrayList<>();
+        StructuredActionProvider provider = request -> {
+            requests.add(request);
+            if (!request.tools().isEmpty()) {
+                return AgentDecision.toolCall("retrieve_knowledge.v1", "{\"query\":\"智能合约定义\"}", "retrieve definition");
+            }
+            return AgentDecision.finalAnswer("智能合约是部署在区块链上的可执行程序。",
+                    request.evidence().stream().map(item -> item.id()).toList(), "answer definition");
+        };
+
+        MiniLoopResult result = engine(provider, new AgentProperties.MiniLoop(true, 6, 5, 2))
+                .execute(UUID.randomUUID(), 7, "什么是合约");
+
+        assertThat(result.state()).isEqualTo(AgentRunState.COMPLETE);
+        assertThat(result.toolCalls()).isEqualTo(1);
+        assertThat(result.retrievalRounds()).isEqualTo(1);
+        assertThat(requests.get(0).tools()).extracting(tool -> tool.name())
+                .containsExactly("retrieve_knowledge.v1");
+        assertThat(requests.get(1).tools()).isEmpty();
+    }
+
+    @Test
     void allowsExplicitAbstentionWhenNoEvidenceCanBeObtained() {
         StructuredActionProvider provider = request -> AgentDecision.abstain(
                 "I cannot verify this claim with the available tools.", List.of(),

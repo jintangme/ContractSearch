@@ -43,11 +43,10 @@
             </div>
             <MarkdownMessage v-if="message.role === 'assistant' && !message.loading" :content="message.content" />
             <p v-if="message.role !== 'assistant'" class="message-content">{{ message.content }}</p>
-            <section v-if="message.agentRun?.evidence?.length && !message.loading" class="answer-sources">
+            <section v-if="message.agentRun?.state === 'COMPLETE' && message.agentRun?.evidence?.length && !message.loading" class="answer-sources">
               <details>
                 <summary>
                   <span>参考来源</span>
-                  <small>{{ message.agentRun.evidenceTotal }}</small>
                 </summary>
                 <div class="source-list">
                   <details v-for="(item, index) in message.agentRun.evidence" :key="item.id" class="source-item">
@@ -996,22 +995,22 @@ function scrollToBottom() {
 }
 
 .activity-stream li.activity-line--running {
-  color: #245db5;
+  color: #344054;
   font-weight: 650;
 }
 
 .activity-stream li.activity-line--running i {
-  background: #3976d5;
-  box-shadow: 0 0 0 4px rgba(57, 118, 213, 0.12);
+  background: #111827;
+  box-shadow: 0 0 0 4px rgba(17, 24, 39, 0.1);
   animation: activity-pulse 1.15s ease-in-out infinite;
 }
 
 .activity-stream li.activity-line--failed {
-  color: #c63f35;
+  color: #475467;
 }
 
 .activity-stream li.activity-line--failed i {
-  background: #d64a40;
+  background: #667085;
 }
 
 @keyframes activity-pulse {
@@ -1033,19 +1032,6 @@ function scrollToBottom() {
   font-size: 12px;
   font-weight: 700;
   cursor: pointer;
-}
-
-.answer-sources > details > summary small {
-  min-width: 19px;
-  height: 19px;
-  padding: 0 6px;
-  border-radius: 999px;
-  background: #f0f2f5;
-  color: #667085;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 10px;
 }
 
 .source-list {
@@ -1132,8 +1118,8 @@ function scrollToBottom() {
 
 .trust-badge--authoritative,
 .trust-badge--verified {
-  background: #e8f8f1;
-  color: #087a50;
+  background: #e9ecef;
+  color: #344054;
 }
 
 .message-actions {
@@ -1320,7 +1306,7 @@ textarea:focus {
 
 .inline-error {
   margin-top: 10px;
-  color: #b42318;
+  color: #475467;
   font-size: 13px;
 }
 

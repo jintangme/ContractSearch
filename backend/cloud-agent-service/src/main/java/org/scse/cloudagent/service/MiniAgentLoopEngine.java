@@ -87,7 +87,7 @@ public class MiniAgentLoopEngine {
                         workspaceContext,
                         context.observations,
                         context.evidence,
-                        availableTools(remainingToolCalls, remainingRetrievalRounds),
+                        availableTools(context, task, workspaceContext, remainingToolCalls, remainingRetrievalRounds),
                         context.steps,
                         remainingToolCalls,
                         remainingRetrievalRounds
@@ -119,13 +119,31 @@ public class MiniAgentLoopEngine {
         }
     }
 
-    private List<ToolDefinition> availableTools(int remainingToolCalls, int remainingRetrievalRounds) {
+    private List<ToolDefinition> availableTools(Context context,
+                                                String task,
+                                                Map<String, Object> workspaceContext,
+                                                int remainingToolCalls,
+                                                int remainingRetrievalRounds) {
         if (remainingToolCalls <= 0) return List.of();
+        boolean generalKnowledge = isGeneralKnowledgeQuestion(task, workspaceContext);
+        if (context.knowledgeRetrieved && generalKnowledge) return List.of();
         return toolRegistry.availableDefinitions(MiniLoopToolPolicy.ALLOWED_TOOLS).stream()
+                .filter(tool -> !generalKnowledge || "retrieve_knowledge.v1".equals(tool.name()))
                 .filter(tool -> remainingRetrievalRounds > 0
                         || (!("search_contracts.v1".equals(tool.name()))
                         && !("retrieve_knowledge.v1".equals(tool.name()))))
                 .toList();
+    }
+
+    private boolean isGeneralKnowledgeQuestion(String task, Map<String, Object> workspaceContext) {
+        if (workspaceContext != null && workspaceContext.containsKey("selectedContractId")) return false;
+        String normalized = task == null ? "" : task.toLowerCase();
+        return List.of(
+                "合约库", "搜索", "查找", "找一个", "找出", "候选", "源码", "代码",
+                "编译", "预审", "审计", "部署", "验证", "复用", "实现", "对比合约",
+                "library", "search", "find", "candidate", "source code", "compile",
+                "precheck", "audit", "deploy", "verify", "implementation"
+        ).stream().noneMatch(normalized::contains);
     }
 
     private void executeTool(Context context, UUID runId, long userId, AgentDecision decision) {
@@ -171,6 +189,7 @@ public class MiniAgentLoopEngine {
         ));
         context.toolCalls++;
         if (retrieval) context.retrievalRounds++;
+        if ("retrieve_knowledge.v1".equals(tool.definition().name())) context.knowledgeRetrieved = true;
         ToolExecutionResult result = tool.execute(arguments, new ToolExecutionContext(userId, runId));
         List<UUID> evidenceIds = addEvidence(context, result.evidence(), toolCallId);
         Map<String, Object> observation = new LinkedHashMap<>(result.output());
@@ -270,6 +289,7 @@ public class MiniAgentLoopEngine {
         private int toolCalls;
         private int retrievalRounds;
         private int duplicateRecoveries;
+        private boolean knowledgeRetrieved;
         private final List<AgentEvent> events = new ArrayList<>();
         private final List<EvidenceItem> evidence = new ArrayList<>();
         private final List<String> observations = new ArrayList<>();
