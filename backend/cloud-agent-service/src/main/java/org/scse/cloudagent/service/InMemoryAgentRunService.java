@@ -26,6 +26,7 @@ import org.slf4j.MDC;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -69,7 +70,7 @@ public class InMemoryAgentRunService {
         UUID id = UUID.randomUUID();
         String title = request.title() == null || request.title().isBlank() ? "New agent session" : request.title().trim();
         SessionResponse session = new SessionResponse(id, userId, title,
-                request.workspaceContext() == null ? Map.of() : Map.copyOf(request.workspaceContext()), Instant.now());
+                sanitizeWorkspaceContext(request.workspaceContext()), Instant.now());
         sessions.put(id, session);
         archive.saveSession(session);
         return session;
@@ -99,7 +100,7 @@ public class InMemoryAgentRunService {
         String mode = properties.miniLoop().enabled() ? "MINI_AGENTIC_RAG" : "MOCK";
         log.info("event=agent_run_created run_id={} user_id={} model={} mode={}", run.id, userId, run.model, mode);
         if (properties.miniLoop().enabled()) {
-            executeMiniLoop(run);
+            executeMiniLoop(run, sanitizeWorkspaceContext(request.workspaceContext()));
         } else {
             executeMockLoop(run);
         }
@@ -134,8 +135,8 @@ public class InMemoryAgentRunService {
                 run.id, run.userId, run.state, run.events.size(), run.evidence.size());
     }
 
-    private void executeMiniLoop(MutableRun run) {
-        MiniLoopResult result = miniAgentLoopEngine.execute(run.id, run.userId, run.task);
+    private void executeMiniLoop(MutableRun run, Map<String, Object> workspaceContext) {
+        MiniLoopResult result = miniAgentLoopEngine.execute(run.id, run.userId, run.task, workspaceContext);
         run.state = result.state();
         run.answer = result.answer();
         run.errorCode = result.errorCode();
@@ -149,6 +150,43 @@ public class InMemoryAgentRunService {
         if (run.state == AgentRunState.COMPLETE) completedCounter.increment();
         log.info("event=agent_run_finished run_id={} user_id={} state={} error_code={} steps={} tool_calls={} retrieval_rounds={}",
                 run.id, run.userId, run.state, run.errorCode, run.steps, run.toolCalls, run.retrievalRounds);
+    }
+
+    private Map<String, Object> sanitizeWorkspaceContext(Map<String, Object> raw) {
+        if (raw == null || raw.isEmpty()) return Map.of();
+        Map<String, Object> sanitized = new LinkedHashMap<>();
+        copyPositiveLong(raw, sanitized, "selectedContractId");
+        copyPositiveLong(raw, sanitized, "draftId");
+        copyPositiveLong(raw, sanitized, "conversationSessionId");
+        copyBoundedText(raw, sanitized, "activeLabFile", 500);
+        copyBoundedText(raw, sanitized, "origin", 64);
+        Object attachmentIds = raw.get("attachmentIds");
+        if (attachmentIds instanceof List<?> values) {
+            List<Long> ids = values.stream().limit(20).map(this::positiveLong).filter(java.util.Objects::nonNull).toList();
+            if (!ids.isEmpty()) sanitized.put("attachmentIds", ids);
+        }
+        return Map.copyOf(sanitized);
+    }
+
+    private void copyPositiveLong(Map<String, Object> source, Map<String, Object> target, String key) {
+        Long value = positiveLong(source.get(key));
+        if (value != null) target.put(key, value);
+    }
+
+    private Long positiveLong(Object value) {
+        try {
+            long parsed = value instanceof Number number ? number.longValue() : Long.parseLong(String.valueOf(value));
+            return parsed > 0 ? parsed : null;
+        } catch (RuntimeException exception) {
+            return null;
+        }
+    }
+
+    private void copyBoundedText(Map<String, Object> source, Map<String, Object> target, String key, int maxLength) {
+        Object value = source.get(key);
+        if (value == null) return;
+        String text = String.valueOf(value).trim();
+        if (!text.isEmpty()) target.put(key, text.substring(0, Math.min(text.length(), maxLength)));
     }
 
     private String toArguments(String task) {

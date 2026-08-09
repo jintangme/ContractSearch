@@ -6,6 +6,14 @@
           <button class="new-chat-button" type="button" @click="resetConversation">新对话</button>
           <h1 v-if="currentConversationTitle !== '新对话'">{{ currentConversationTitle }}</h1>
         </div>
+        <div class="conversation-mode-switch" aria-label="对话模式">
+          <button type="button" :class="{ active: conversationMode === 'agent' }" @click="setConversationMode('agent')">
+            Agent
+          </button>
+          <button type="button" :class="{ active: conversationMode === 'chat' }" @click="setConversationMode('chat')">
+            普通对话
+          </button>
+        </div>
         <button class="history-button" type="button" @click="openHistory">
           对话记录
           <span v-if="sessions.length">{{ sessions.length }}</span>
@@ -30,13 +38,42 @@
         >
           <div class="message-bubble">
             <div v-if="message.role === 'assistant' && message.loading" class="assistant-loading">
-              <span>正在分析</span>
+              <span>{{ message.agentLoading ? 'Agent 正在检索与验证' : '正在分析' }}</span>
               <i></i>
               <i></i>
               <i></i>
             </div>
             <MarkdownMessage v-else-if="message.role === 'assistant'" :content="message.content" />
             <p v-else class="message-content">{{ message.content }}</p>
+            <section v-if="message.agentRun" class="agent-run-card" :class="`agent-run-card--${String(message.agentRun.state || '').toLowerCase()}`">
+              <div class="agent-run-head">
+                <div>
+                  <strong>{{ message.agentRun.state === 'COMPLETE' ? 'Agent 任务完成' : 'Agent 任务未完成' }}</strong>
+                  <span>{{ message.agentRun.steps }} 次决策 · {{ message.agentRun.toolCalls }} 次工具 · {{ message.agentRun.retrievalRounds }} 轮检索</span>
+                </div>
+                <code>{{ message.agentRun.model }}</code>
+              </div>
+              <ol v-if="message.agentRun.toolSteps?.length" class="agent-step-list">
+                <li v-for="step in message.agentRun.toolSteps" :key="`${step.sequence}-${step.tool}`">
+                  <span>{{ toolLabel(step.tool) }}</span>
+                  <small>已完成</small>
+                </li>
+              </ol>
+              <details v-if="message.agentRun.evidence?.length" class="agent-evidence">
+                <summary>查看 Evidence（{{ message.agentRun.evidence.length }}）</summary>
+                <article v-for="item in message.agentRun.evidence" :key="item.id">
+                  <div>
+                    <strong>{{ item.title || item.sourceType }}</strong>
+                    <span :class="`trust-badge trust-badge--${String(item.trustLevel || '').toLowerCase()}`">{{ item.trustLevel }}</span>
+                  </div>
+                  <p>{{ item.excerpt || item.sourceRef }}</p>
+                  <code>{{ item.id }}</code>
+                </article>
+              </details>
+              <button v-if="message.agentRun.state === 'FAILED'" type="button" class="agent-fallback" @click="retryWithStandardChat(message)">
+                切换普通对话重试
+              </button>
+            </section>
             <div v-if="message.attachments?.length" class="message-attachments">
               <span v-for="attachment in message.attachments" :key="attachment.localId || attachment.id" class="attachment-chip">
                 {{ attachment.fileName }}
@@ -59,6 +96,7 @@
               </svg>
             </button>
             <button
+              v-if="!message.agentRun"
               type="button"
               :disabled="isSending"
               title="重新生成"
@@ -117,14 +155,15 @@
             </button>
             <div v-if="attachmentMenuOpen" class="attachment-menu">
               <button type="button" @click="openContractPicker">选择合约</button>
-              <button type="button" @click="openWorkspacePicker">工作台文件</button>
-              <button type="button" @click="openLocalFilePicker">本地文件</button>
+              <button v-if="conversationMode === 'chat'" type="button" @click="openWorkspacePicker">工作台文件</button>
+              <button v-if="conversationMode === 'chat'" type="button" @click="openLocalFilePicker">本地文件</button>
             </div>
           </div>
-          <label class="model-inline">
+          <label v-if="conversationMode === 'chat'" class="model-inline">
             <span>模型</span>
             <AiModelSelect v-model="selectedModel" label="" @update:model-value="persistSelectedModel" />
           </label>
+          <span v-else class="agent-model-inline">Agent · glm-4.5-air</span>
           <button class="send-button" type="button" :disabled="!canSend" @click="sendMessage">
             {{ isSending ? '生成中...' : '发送' }}
           </button>
@@ -207,14 +246,19 @@
 
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { conversationApi, contractApi } from '@/api'
+import { useRoute, useRouter } from 'vue-router'
+import { agentApi, conversationApi, contractApi } from '@/api'
 import AiModelSelect from '@/components/AiModelSelect.vue'
 import MarkdownMessage from '@/components/MarkdownMessage.vue'
 import { getStoredAiModel, persistAiModel } from '@/config/aiModels'
 
 const LAB_WORKSPACE_KEY = 'contractLabWorkspaceV1'
+const route = useRoute()
+const router = useRouter()
 
 const selectedModel = ref(getStoredAiModel())
+const conversationMode = ref('agent')
+const currentAgentSessionId = ref(null)
 const inputText = ref('')
 const messages = ref([])
 const sessions = ref([])
@@ -237,6 +281,7 @@ const copiedMessageId = ref('')
 
 const canSend = computed(() => inputText.value.trim().length > 0 && !isSending.value)
 const currentConversationTitle = computed(() => {
+  if (conversationMode.value === 'agent') return messages.value.length ? 'Agent 对话' : '新对话'
   if (!currentSessionId.value) return '新对话'
   return sessions.value.find(item => item.id === currentSessionId.value)?.title || '新对话'
 })
@@ -253,8 +298,9 @@ const pickerItems = computed(() => {
 
 watch(messages, () => scrollToBottom(), { deep: true })
 
-onMounted(() => {
-  loadSessions()
+onMounted(async () => {
+  await loadSessions()
+  await consumeAgentRouteContext()
   window.addEventListener('conversation:new', resetConversation)
 })
 
@@ -268,9 +314,16 @@ function persistSelectedModel() {
 
 function resetConversation() {
   currentSessionId.value = null
+  currentAgentSessionId.value = null
   messages.value = []
   attachments.value = []
   inputText.value = ''
+  errorMessage.value = ''
+}
+
+function setConversationMode(mode) {
+  if (!['agent', 'chat'].includes(mode) || isSending.value) return
+  conversationMode.value = mode
   errorMessage.value = ''
 }
 
@@ -292,6 +345,7 @@ async function loadSession(id) {
     const response = await conversationApi.getSession(id)
     const session = response?.data
     currentSessionId.value = session?.id || null
+    conversationMode.value = 'chat'
     messages.value = Array.isArray(session?.messages) ? session.messages : []
     attachments.value = []
     historyOpen.value = false
@@ -349,6 +403,7 @@ async function sendMessage() {
   isSending.value = true
   errorMessage.value = ''
   const outgoingAttachments = attachments.value.map(toPayload)
+  const workspaceContext = buildWorkspaceContext(attachments.value)
   if (outgoingAttachments.some(item => !String(item.contentText || '').trim())) {
     errorMessage.value = '附件内容未读取'
     isSending.value = false
@@ -370,6 +425,7 @@ async function sendMessage() {
     role: 'assistant',
     content: '正在分析...',
     loading: true,
+    agentLoading: conversationMode.value === 'agent',
     createdAt: new Date().toISOString(),
     attachments: []
   })
@@ -377,6 +433,10 @@ async function sendMessage() {
   attachments.value = []
   attachmentPreview.value = null
   try {
+    if (conversationMode.value === 'agent') {
+      await sendAgentMessage({ text, assistantLocalId, workspaceContext })
+      return
+    }
     const response = await conversationApi.chat({
       sessionId: currentSessionId.value,
       model: selectedModel.value,
@@ -415,6 +475,118 @@ async function sendMessage() {
   } finally {
     isSending.value = false
   }
+}
+
+async function sendAgentMessage({ text, assistantLocalId, workspaceContext }) {
+  try {
+    if (!currentAgentSessionId.value) {
+      const session = await agentApi.createSession({
+        title: text.slice(0, 120),
+        workspaceContext,
+      })
+      currentAgentSessionId.value = session?.id || null
+    }
+    const run = await agentApi.createRun({
+      sessionId: currentAgentSessionId.value,
+      task: text,
+      workspaceContext,
+    })
+    const agentRun = summarizeAgentRun(run)
+    const completed = run?.state === 'COMPLETE'
+    replaceMessage(assistantLocalId, {
+      localId: assistantLocalId,
+      role: 'assistant',
+      content: completed
+        ? (run?.answer || 'Agent 已完成，但未返回答案。')
+        : `Agent 未能完成任务：${run?.failureMessage || run?.errorCode || '未知错误'}`,
+      modelUsed: run?.model || 'glm-4.5-air',
+      createdAt: run?.updatedAt || new Date().toISOString(),
+      attachments: [],
+      agentRun,
+    })
+  } catch (error) {
+    replaceMessage(assistantLocalId, {
+      localId: assistantLocalId,
+      role: 'assistant',
+      content: `Agent 服务暂时不可用：${friendlyAgentError(error)}`,
+      modelUsed: 'glm-4.5-air',
+      createdAt: new Date().toISOString(),
+      attachments: [],
+      agentRun: {
+        state: 'FAILED',
+        model: 'glm-4.5-air',
+        steps: 0,
+        toolCalls: 0,
+        retrievalRounds: 0,
+        toolSteps: [],
+        evidence: [],
+      },
+    })
+  }
+}
+
+function summarizeAgentRun(run = {}) {
+  const events = Array.isArray(run.events) ? run.events : []
+  return {
+    id: run.id,
+    state: run.state || 'FAILED',
+    errorCode: run.errorCode,
+    failureMessage: run.failureMessage,
+    model: run.model || 'glm-4.5-air',
+    steps: Number(run.steps || 0),
+    toolCalls: Number(run.toolCalls || 0),
+    retrievalRounds: Number(run.retrievalRounds || 0),
+    toolSteps: events
+      .filter(event => event?.type === 'tool.completed')
+      .map(event => ({
+        sequence: event.sequence,
+        tool: event?.data?.payload?.tool || '未知工具',
+      })),
+    evidence: Array.isArray(run.evidence)
+      ? run.evidence.slice(0, 20).map(item => ({
+          ...item,
+          excerpt: String(item.excerpt || '').slice(0, 900),
+        }))
+      : [],
+  }
+}
+
+function buildWorkspaceContext(items = []) {
+  const selectedContract = items.find(item => item.sourceType === 'contract' && Number(item.contractId) > 0)
+  const workspaceFile = items.find(item => item.sourceType === 'workspace')
+  const context = { origin: 'conversation' }
+  if (selectedContract) context.selectedContractId = Number(selectedContract.contractId)
+  if (workspaceFile?.fileName) context.activeLabFile = workspaceFile.fileName
+  if (Number(currentSessionId.value) > 0) context.conversationSessionId = Number(currentSessionId.value)
+  return context
+}
+
+function friendlyAgentError(error) {
+  const text = String(error?.message || error || '')
+  if (text.includes('404') || text.includes('AGENT_DISABLED')) return 'Agent 模式未启用，可切换普通对话'
+  if (text.includes('timeout') || text.includes('超时')) return 'Agent 执行超时，可稍后重试'
+  return '请检查 Agent Service 和 Gateway'
+}
+
+async function retryWithStandardChat(message) {
+  const index = messages.value.findIndex(item => item === message)
+  const userMessage = [...messages.value.slice(0, index)].reverse().find(item => item.role === 'user')
+  if (!userMessage?.content || isSending.value) return
+  conversationMode.value = 'chat'
+  inputText.value = userMessage.content
+  attachments.value = Array.isArray(userMessage.attachments) ? [...userMessage.attachments] : []
+  await nextTick()
+  sendMessage()
+}
+
+function toolLabel(tool) {
+  return {
+    'retrieve_knowledge.v1': '检索领域知识',
+    'search_contracts.v1': '搜索合约',
+    'get_contract.v1': '读取合约源码',
+    'compile_contract.v1': '沙箱编译',
+    'precheck_contract.v1': '安全预审',
+  }[tool] || tool
 }
 
 async function copyAssistantMessage(message) {
@@ -590,6 +762,7 @@ async function attachContract(item) {
     const response = await contractApi.getContractDetail(item.id)
     const detail = response?.data || item
     addAttachment({
+      contractId: Number(detail.id || item.id),
       fileName: `${detail.contractName || item.contractName || 'Contract'}.sol`,
       fileType: 'sol',
       sourceType: 'contract',
@@ -606,6 +779,39 @@ async function attachContract(item) {
   } catch {
     errorMessage.value = '附件解析失败'
   }
+}
+
+async function consumeAgentRouteContext() {
+  if (String(route.query.agent || '') !== '1') return
+  conversationMode.value = 'agent'
+  const prompt = String(route.query.prompt || '').trim()
+  if (prompt) inputText.value = prompt.slice(0, 12000)
+  const contractId = Number(route.query.contractId)
+  if (Number.isInteger(contractId) && contractId > 0) {
+    try {
+      const response = await contractApi.getContractDetail(contractId)
+      const detail = response?.data
+      if (detail) {
+        addAttachment({
+          contractId,
+          fileName: `${detail.contractName || 'Contract'}.sol`,
+          fileType: 'sol',
+          sourceType: 'contract',
+          contentText: [
+            `合约名：${detail.contractName || ''}`,
+            `地址：${detail.address || ''}`,
+            `类型：${detail.category || ''}`,
+            `摘要：${detail.description || ''}`,
+            '源码：',
+            detail.sourceCode || ''
+          ].join('\n')
+        })
+      }
+    } catch {
+      errorMessage.value = '无法读取来源合约，仍可直接向 Agent 提问'
+    }
+  }
+  router.replace({ path: '/conversation' }).catch(() => {})
 }
 
 function attachWorkspaceFile(file) {
@@ -727,6 +933,33 @@ function scrollToBottom() {
   display: inline-flex;
   align-items: center;
   gap: 12px;
+}
+
+.conversation-mode-switch {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px;
+  border: 1px solid #e1e5eb;
+  border-radius: 11px;
+  background: #f5f7fa;
+}
+
+.conversation-mode-switch button {
+  height: 28px;
+  padding: 0 11px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #667085;
+  font-size: 13px;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.conversation-mode-switch button.active {
+  background: #111827;
+  color: #fff;
+  box-shadow: 0 2px 7px rgba(15, 23, 42, 0.16);
 }
 
 .new-chat-button {
@@ -907,6 +1140,149 @@ function scrollToBottom() {
   margin: 10px 0 0;
   color: #98a2b3;
   font-size: 12px;
+}
+
+.agent-run-card {
+  margin-top: 14px;
+  padding: 13px;
+  border: 1px solid #dfe5ec;
+  border-radius: 13px;
+  background: #f8fafc;
+}
+
+.agent-run-card--failed {
+  border-color: #f0c7c3;
+  background: #fff8f7;
+}
+
+.agent-run-head,
+.agent-run-head > div,
+.agent-evidence article > div {
+  display: flex;
+  align-items: center;
+}
+
+.agent-run-head {
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.agent-run-head > div {
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.agent-run-head strong {
+  color: #111827;
+  font-size: 14px;
+}
+
+.agent-run-head span,
+.agent-run-head code {
+  color: #667085;
+  font-size: 12px;
+}
+
+.agent-step-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 7px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.agent-step-list li {
+  padding: 8px 9px;
+  border: 1px solid #e5e9ef;
+  border-radius: 9px;
+  background: #fff;
+}
+
+.agent-step-list span,
+.agent-step-list small {
+  display: block;
+}
+
+.agent-step-list span {
+  color: #344054;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.agent-step-list small {
+  margin-top: 2px;
+  color: #12a56a;
+  font-size: 11px;
+}
+
+.agent-evidence {
+  margin-top: 11px;
+}
+
+.agent-evidence summary {
+  color: #475467;
+  font-size: 12px;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.agent-evidence article {
+  margin-top: 8px;
+  padding: 9px;
+  border-radius: 9px;
+  background: #fff;
+}
+
+.agent-evidence article > div {
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.agent-evidence article strong {
+  color: #344054;
+  font-size: 12px;
+}
+
+.agent-evidence article p {
+  margin: 5px 0;
+  color: #667085;
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
+.agent-evidence article code {
+  color: #98a2b3;
+  font-size: 10px;
+}
+
+.trust-badge {
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: #eef2f6;
+  color: #475467;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.trust-badge--authoritative,
+.trust-badge--verified {
+  background: #e8f8f1;
+  color: #087a50;
+}
+
+.agent-fallback {
+  margin-top: 10px;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid #d0d5dd;
+  border-radius: 9px;
+  background: #fff;
+  color: #344054;
+  font-weight: 700;
+  cursor: pointer;
 }
 
 .message-actions {
@@ -1112,6 +1488,13 @@ textarea:focus {
   gap: 8px;
   color: #667085;
   font-size: 14px;
+}
+
+.agent-model-inline {
+  margin-left: auto;
+  color: #475467;
+  font-size: 13px;
+  font-weight: 750;
 }
 
 .send-button {
@@ -1386,6 +1769,16 @@ textarea:focus {
 
   .model-inline {
     margin-left: 0;
+  }
+
+  .conversation-mode-switch {
+    order: 3;
+  }
+
+  .conversation-card-head {
+    flex-wrap: wrap;
+    height: auto;
+    padding-block: 10px;
   }
 }
 </style>

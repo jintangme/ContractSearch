@@ -62,6 +62,10 @@ public class MiniAgentLoopEngine {
     }
 
     public MiniLoopResult execute(UUID runId, long userId, String task) {
+        return execute(runId, userId, task, Map.of());
+    }
+
+    public MiniLoopResult execute(UUID runId, long userId, String task, Map<String, Object> workspaceContext) {
         Context context = new Context();
         move(context, AgentSignal.START_PLAN, "run.plan", Map.of("mode", "MINI_AGENTIC_RAG"));
         try {
@@ -71,6 +75,7 @@ public class MiniAgentLoopEngine {
                 int remainingRetrievalRounds = properties.miniLoop().maxRetrievalRounds() - context.retrievalRounds;
                 AgentDecision decision = provider.decide(new AgentDecisionRequest(
                         task,
+                        workspaceContext,
                         context.observations,
                         context.evidence,
                         availableTools(remainingToolCalls, remainingRetrievalRounds),
