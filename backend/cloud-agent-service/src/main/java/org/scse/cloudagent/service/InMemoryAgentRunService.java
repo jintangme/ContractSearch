@@ -15,6 +15,7 @@ import org.scse.cloudagent.domain.Proposal;
 import org.scse.cloudagent.domain.TrustLevel;
 import org.scse.cloudagent.dto.CreateRunRequest;
 import org.scse.cloudagent.dto.CreateSessionRequest;
+import org.scse.cloudagent.dto.AgentSessionSummary;
 import org.scse.cloudagent.dto.SessionResponse;
 import org.scse.cloudagent.state.AgentStateMachine;
 import org.scse.cloudagent.tool.AgentTool;
@@ -34,6 +35,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.Comparator;
 
 @Service
 public class InMemoryAgentRunService {
@@ -84,10 +86,49 @@ public class InMemoryAgentRunService {
 
     public SessionResponse getSession(long userId, UUID sessionId) {
         SessionResponse session = sessions.get(sessionId);
+        if (session == null) {
+            archive.findSessions(userId).stream().filter(item -> item.id().equals(sessionId)).findFirst()
+                    .ifPresent(item -> sessions.put(item.id(), item));
+            session = sessions.get(sessionId);
+        }
         if (session == null || session.userId() != userId) {
             throw new AgentResourceNotFoundException("Session not found");
         }
         return session;
+    }
+
+    public List<AgentSessionSummary> listSessions(long userId) {
+        archive.findSessions(userId).forEach(session -> sessions.putIfAbsent(session.id(), session));
+        return sessions.values().stream()
+                .filter(session -> session.userId() == userId)
+                .map(session -> {
+                    List<AgentRun> sessionRuns = listRuns(userId, session.id());
+                    Instant updatedAt = sessionRuns.stream().map(AgentRun::updatedAt).max(Instant::compareTo)
+                            .orElse(session.createdAt());
+                    return new AgentSessionSummary(session.id(), session.title(), session.createdAt(), updatedAt,
+                            sessionRuns.size());
+                })
+                .sorted(Comparator.comparing(AgentSessionSummary::updatedAt).reversed())
+                .toList();
+    }
+
+    public List<AgentRun> listRuns(long userId, UUID sessionId) {
+        getSession(userId, sessionId);
+        Map<UUID, AgentRun> merged = new LinkedHashMap<>();
+        archive.findRuns(userId, sessionId).forEach(run -> merged.put(run.id(), run));
+        runs.values().stream()
+                .filter(run -> run.userId == userId && sessionId.equals(run.sessionId))
+                .map(MutableRun::snapshot)
+                .forEach(run -> merged.put(run.id(), run));
+        return merged.values().stream().sorted(Comparator.comparing(AgentRun::createdAt)).toList();
+    }
+
+    public void deleteSession(long userId, UUID sessionId) {
+        getSession(userId, sessionId);
+        runs.entrySet().removeIf(entry -> entry.getValue().userId == userId
+                && sessionId.equals(entry.getValue().sessionId));
+        sessions.remove(sessionId);
+        archive.deleteSession(userId, sessionId);
     }
 
     public AgentRun createMockRun(long userId, CreateRunRequest request) {

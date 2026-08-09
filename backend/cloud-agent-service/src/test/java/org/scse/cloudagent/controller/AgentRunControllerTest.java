@@ -12,6 +12,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -66,6 +67,42 @@ class AgentRunControllerTest {
                         .header(AgentInternalAuthFilter.INTERNAL_TOKEN_HEADER, TOKEN)
                         .header("X-User-Id", "8"))
                 .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void listsLoadsAndDeletesAgentConversationHistory() throws Exception {
+        String sessionBody = mockMvc.perform(post("/api/agent/v1/sessions")
+                        .header(AgentInternalAuthFilter.INTERNAL_TOKEN_HEADER, TOKEN)
+                        .header("X-User-Id", "7")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"title\":\"history test\"}"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        String sessionId = new ObjectMapper().readTree(sessionBody).get("id").asText();
+
+        mockMvc.perform(post("/api/agent/v1/runs")
+                        .header(AgentInternalAuthFilter.INTERNAL_TOKEN_HEADER, TOKEN)
+                        .header("X-User-Id", "7")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"sessionId\":\"%s\",\"task\":\"what is a contract\"}".formatted(sessionId)))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/agent/v1/sessions")
+                        .header(AgentInternalAuthFilter.INTERNAL_TOKEN_HEADER, TOKEN)
+                        .header("X-User-Id", "7"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[?(@.id == '%s')]".formatted(sessionId)).isNotEmpty());
+
+        mockMvc.perform(get("/api/agent/v1/sessions/{sessionId}/runs", sessionId)
+                        .header(AgentInternalAuthFilter.INTERNAL_TOKEN_HEADER, TOKEN)
+                        .header("X-User-Id", "7"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].task").value("what is a contract"));
+
+        mockMvc.perform(delete("/api/agent/v1/sessions/{sessionId}", sessionId)
+                        .header(AgentInternalAuthFilter.INTERNAL_TOKEN_HEADER, TOKEN)
+                        .header("X-User-Id", "7"))
+                .andExpect(status().isOk());
     }
 
     private JsonNode waitForTerminalRun(String runId) throws Exception {

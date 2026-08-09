@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.UUID;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
 
 @Component
 public class GlmStructuredActionProvider implements StructuredActionProvider {
@@ -51,19 +52,39 @@ public class GlmStructuredActionProvider implements StructuredActionProvider {
         String prompt = buildPrompt(request, null);
         JsonNode response = complete(request, prompt);
         try {
-            return withMetadata(parse(response), response, startedAt, providerCalls);
+            return withMetadata(parseAndValidate(response, request), response, startedAt, providerCalls);
         } catch (RuntimeException firstFailure) {
             String invalid = truncate(response.at("/choices/0/message/content").asText("<tool-call-shape>"), 2000);
             JsonNode repaired = complete(request, buildPrompt(request,
                     "The previous response was invalid. Return exactly one valid tool call or the required final JSON. Invalid response: " + invalid));
             providerCalls++;
             try {
-                return withMetadata(parse(repaired), repaired, startedAt, providerCalls);
+                return withMetadata(parseAndValidate(repaired, request), repaired, startedAt, providerCalls);
             } catch (RuntimeException secondFailure) {
                 throw new AgentToolException(AgentErrorCode.PROVIDER_ERROR,
                         "GLM returned an invalid structured action after one repair attempt", secondFailure);
             }
         }
+    }
+
+    private AgentDecision parseAndValidate(JsonNode response, AgentDecisionRequest request) {
+        AgentDecision decision = parse(response);
+        if (decision.type() == AgentDecision.Type.TOOL_CALL) {
+            boolean offered = request.tools().stream().anyMatch(tool -> tool.name().equals(decision.toolName())
+                    || tool.name().replaceFirst("\\.v1$", "").equals(decision.toolName()));
+            if (!offered) throw new IllegalArgumentException("The selected tool was not offered in this turn");
+            return decision;
+        }
+        if (decision.type() == AgentDecision.Type.FINAL_ANSWER) {
+            if (decision.evidenceIds().isEmpty()) {
+                throw new IllegalArgumentException("A final answer must cite available evidence");
+            }
+            Set<UUID> available = request.evidence().stream().map(item -> item.id()).collect(java.util.stream.Collectors.toSet());
+            if (!available.containsAll(decision.evidenceIds())) {
+                throw new IllegalArgumentException("The final answer cited unknown evidence");
+            }
+        }
+        return decision;
     }
 
     private AgentDecision withMetadata(AgentDecision decision, JsonNode response, long startedAt, int providerCalls) {

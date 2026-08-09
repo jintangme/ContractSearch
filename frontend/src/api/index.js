@@ -112,7 +112,10 @@ export const conversationApi = {
 // ===================== Agent Workspace API（默认由后端 feature flag 关闭） =====================
 export const agentApi = {
   createSession: (data) => http.post('/agent/v1/sessions', data),
+  listSessions: () => http.get('/agent/v1/sessions'),
   getSession: (id) => http.get(`/agent/v1/sessions/${id}`),
+  getSessionRuns: (id) => http.get(`/agent/v1/sessions/${id}/runs`),
+  deleteSession: (id) => http.delete(`/agent/v1/sessions/${id}`),
   createRun: (data) => http.post('/agent/v1/runs', data, { timeout: 30000 }),
   getRun: (id) => http.get(`/agent/v1/runs/${id}`),
   getEvidence: (id) => http.get(`/agent/v1/runs/${id}/evidence`),

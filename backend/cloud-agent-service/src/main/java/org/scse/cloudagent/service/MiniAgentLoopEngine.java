@@ -126,7 +126,7 @@ public class MiniAgentLoopEngine {
                                                 int remainingRetrievalRounds) {
         if (remainingToolCalls <= 0) return List.of();
         boolean generalKnowledge = isGeneralKnowledgeQuestion(task, workspaceContext);
-        if (context.knowledgeRetrieved && generalKnowledge) return List.of();
+        if (context.forceTerminal || (context.knowledgeRetrieved && generalKnowledge)) return List.of();
         return toolRegistry.availableDefinitions(MiniLoopToolPolicy.ALLOWED_TOOLS).stream()
                 .filter(tool -> !generalKnowledge || "retrieve_knowledge.v1".equals(tool.name()))
                 .filter(tool -> remainingRetrievalRounds > 0
@@ -160,8 +160,8 @@ public class MiniAgentLoopEngine {
         JsonNode arguments = validator.parseObject(decision.argumentsJson());
         String invocationKey = tool.definition().name() + ":" + arguments.toString();
         if (!context.invocations.add(invocationKey)) {
-            if (context.duplicateRecoveries == 0 && !context.evidence.isEmpty()) {
-                context.duplicateRecoveries++;
+            if (!context.evidence.isEmpty() && !context.forceTerminal) {
+                context.forceTerminal = true;
                 context.steps = Math.max(0, context.steps - 1);
                 context.observations.add(contentBoundary.wrap("loop_guard", toJson(Map.of(
                         "status", "DUPLICATE_SKIPPED",
@@ -288,7 +288,7 @@ public class MiniAgentLoopEngine {
         private int steps;
         private int toolCalls;
         private int retrievalRounds;
-        private int duplicateRecoveries;
+        private boolean forceTerminal;
         private boolean knowledgeRetrieved;
         private final List<AgentEvent> events = new ArrayList<>();
         private final List<EvidenceItem> evidence = new ArrayList<>();

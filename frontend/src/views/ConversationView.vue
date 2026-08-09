@@ -158,7 +158,7 @@
             v-for="session in sessions"
             :key="session.id"
             class="session-item"
-            :class="{ active: session.id === currentSessionId }"
+            :class="{ active: session.id === currentAgentSessionId }"
             @click="loadSession(session.id)"
           >
             <div>
@@ -216,7 +216,7 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { agentApi, conversationApi, contractApi } from '@/api'
+import { agentApi, contractApi } from '@/api'
 import MarkdownMessage from '@/components/MarkdownMessage.vue'
 
 const route = useRoute()
@@ -226,7 +226,6 @@ const currentAgentSessionId = ref(null)
 const inputText = ref('')
 const messages = ref([])
 const sessions = ref([])
-const currentSessionId = ref(null)
 const attachments = ref([])
 const attachmentPreview = ref(null)
 const attachmentMenuOpen = ref(false)
@@ -243,9 +242,9 @@ const copiedMessageId = ref('')
 
 const canSend = computed(() => inputText.value.trim().length > 0 && !isSending.value)
 const currentConversationTitle = computed(() => {
-  if (messages.value.length && !currentSessionId.value) return 'AI 对话'
-  if (!currentSessionId.value) return '新对话'
-  return sessions.value.find(item => item.id === currentSessionId.value)?.title || '新对话'
+  if (messages.value.length && !currentAgentSessionId.value) return 'AI 对话'
+  if (!currentAgentSessionId.value) return '新对话'
+  return sessions.value.find(item => item.id === currentAgentSessionId.value)?.title || 'AI 对话'
 })
 const pickerItems = computed(() => {
   const query = contractQuery.value.trim().toLowerCase()
@@ -270,7 +269,6 @@ onBeforeUnmount(() => {
 })
 
 function resetConversation() {
-  currentSessionId.value = null
   currentAgentSessionId.value = null
   messages.value = []
   attachments.value = []
@@ -284,8 +282,8 @@ function useSuggestion(text) {
 
 async function loadSessions() {
   try {
-    const response = await conversationApi.getSessions()
-    sessions.value = Array.isArray(response?.data) ? response.data : []
+    const response = await agentApi.listSessions()
+    sessions.value = Array.isArray(response) ? response : []
   } catch {
     sessions.value = []
   }
@@ -293,10 +291,28 @@ async function loadSessions() {
 
 async function loadSession(id) {
   try {
-    const response = await conversationApi.getSession(id)
-    const session = response?.data
-    currentSessionId.value = session?.id || null
-    messages.value = Array.isArray(session?.messages) ? session.messages : []
+    const [session, runs] = await Promise.all([
+      agentApi.getSession(id),
+      agentApi.getSessionRuns(id),
+    ])
+    currentAgentSessionId.value = session?.id || id
+    messages.value = (Array.isArray(runs) ? runs : []).flatMap(run => [
+      {
+        localId: `history-user-${run.id}`,
+        role: 'user',
+        content: run.task,
+        createdAt: run.createdAt,
+        attachments: [],
+      },
+      {
+        localId: `history-assistant-${run.id}`,
+        role: 'assistant',
+        content: run.state === 'COMPLETE' ? (run.answer || '分析已完成。') : friendlyRunFailure(run),
+        createdAt: run.updatedAt,
+        attachments: [],
+        agentRun: summarizeAgentRun(run),
+      },
+    ])
     attachments.value = []
     historyOpen.value = false
   } catch {
@@ -321,8 +337,8 @@ async function confirmDeleteSession() {
   const session = deleteConfirm.value.session
   if (!session) return
   try {
-    await conversationApi.deleteSession(session.id)
-    if (currentSessionId.value === session.id) resetConversation()
+    await agentApi.deleteSession(session.id)
+    if (currentAgentSessionId.value === session.id) resetConversation()
     deleteConfirm.value = { open: false, mode: 'delete', session: null }
     await loadSessions()
   } catch {
@@ -337,7 +353,7 @@ async function confirmClearSessions() {
     return
   }
   try {
-    await Promise.all(list.map(session => conversationApi.deleteSession(session.id)))
+    await Promise.all(list.map(session => agentApi.deleteSession(session.id)))
     resetConversation()
     sessions.value = []
     historyOpen.value = false
@@ -408,6 +424,7 @@ async function sendAgentMessage({ text, assistantLocalId, workspaceContext }) {
       attachments: [],
       agentRun,
     })
+    await loadSessions()
   } catch (error) {
     replaceMessage(assistantLocalId, {
       localId: assistantLocalId,
@@ -541,7 +558,6 @@ function buildWorkspaceContext(items = []) {
   const selectedContract = items.find(item => item.sourceType === 'contract' && Number(item.contractId) > 0)
   const context = { origin: 'conversation' }
   if (selectedContract) context.selectedContractId = Number(selectedContract.contractId)
-  if (Number(currentSessionId.value) > 0) context.conversationSessionId = Number(currentSessionId.value)
   return context
 }
 

@@ -19,6 +19,8 @@
   - 重复 Tool 调用第一次不再直接终止 Run：跳过重复执行、保留已有 Evidence，并给模型一次使用现有资料完成回答的修正机会；连续再次重复才触发 `LOOP_DETECTED`。
   - Supervisor Prompt 更新为 `delivery-stage4-workspace-v3`：通用知识问题优先检索一次权威知识后回答；最终 answer 禁止包含 Evidence UUID/footer，引用只由结构化 Evidence UI 渲染。
   - 增加确定性通用问答路由：无选中合约且不包含搜索/源码/编译/审计等操作意图时，首轮只提供 `retrieve_knowledge.v1`；成功一次后强制进入 terminal-only turn，避免 GLM 重写查询直到耗尽预算。
+  - Agent Session 新增列表、按 Session 读取 Runs 和删除接口；运行结束后会话摘要自动更新。开启 `AGENT_PERSISTENCE_ENABLED=true` 后，Session/Run/Event/Evidence 可在服务重启后从 PostgreSQL 恢复。
+  - 重复调用且已有 Evidence 时直接设置 `forceTerminal`，下一轮不再暴露任何 Tool；GLM 若仍返回未提供的 Tool、缺失引用或未知引用，会自动进入一次结构修复，而不是直接向用户返回 `LOOP_DETECTED/PROVIDER_ERROR`。
 - `frontend`
   - 移除 Agent/普通对话开关、模型选择器和普通对话 fallback；所有正常提问统一进入 Agent Run。
   - 创建 Run 后持续轮询，不再等待整个多轮模型/工具链完成才一次性显示结果。
@@ -29,12 +31,13 @@
   - 失败消息映射为用户可理解的中文提示，不再暴露 `get_contract.v1` 等内部 Tool 名或英文异常。
   - AI 对话活动、错误和可信度标签统一为黑白灰色系；失败 Run 不展示没有最终答案的 Evidence 区域。
   - 参考来源入口改为低对比度链接图标，不显示文字和数量；点击图标后才展开精简来源列表。
+  - 对话记录完全切换到 Agent Session API；新建 Run 完成后自动刷新历史，打开历史会按 Run 还原用户问题、最终回答、活动与来源，删除/清空也操作 Agent 会话。
   - 详情、搜索、预审入口统一弱化为“在 AI 对话中继续/深入分析”。
 - Contract test 的目录定位同步到整理后的 `backend/`、`frontend/` 项目结构。
 
 ## 自动验证
 
-- `cloud-agent-service`：52 tests，0 failures，2 个需真实外部环境的 integration tests skipped。
+- `cloud-agent-service`：55 tests，0 failures，2 个需真实外部环境的 integration tests skipped。
 - Tool alias 单测确认 `mock_echo` 只能解析到已注册 `mock_echo.v1`，随机未知 Tool 仍失败。
 - Agent Loop 单测确认重复调用可跳过并使用已有 Evidence 完成回答；连续重复仍会安全终止。
 - 前端 production build：809 modules transformed，构建成功。

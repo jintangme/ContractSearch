@@ -9,6 +9,17 @@ security:
   - bearerAuth: []
 paths:
   /sessions:
+    get:
+      operationId: listAgentSessions
+      tags: [Session]
+      responses:
+        '200':
+          description: Agent conversation history owned by the current user
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/AgentSessionSummary'}
     post:
       operationId: createAgentSession
       tags: [Session]
@@ -35,6 +46,30 @@ paths:
           content:
             application/json:
               schema: {$ref: '#/components/schemas/AgentSession'}
+        '404': {$ref: '#/components/responses/NotFound'}
+    delete:
+      operationId: deleteAgentSession
+      tags: [Session]
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+      responses:
+        '200':
+          description: Session and its runs deleted
+        '404': {$ref: '#/components/responses/NotFound'}
+  /sessions/{sessionId}/runs:
+    get:
+      operationId: listAgentSessionRuns
+      tags: [Session, Run]
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+      responses:
+        '200':
+          description: Ordered runs in an owned Agent conversation
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/AgentRun'}
         '404': {$ref: '#/components/responses/NotFound'}
   /runs:
     post:
@@ -175,6 +210,15 @@ components:
         title: {type: string}
         workspaceContext: {type: object, additionalProperties: true}
         createdAt: {type: string, format: date-time}
+    AgentSessionSummary:
+      type: object
+      required: [id, title, createdAt, updatedAt, runCount]
+      properties:
+        id: {type: string, format: uuid}
+        title: {type: string}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+        runCount: {type: integer, format: int64, minimum: 0}
     AgentRun:
       type: object
       required: [id, userId, task, model, traceId, state, steps, toolCalls, retrievalRounds, events, evidence, proposals]

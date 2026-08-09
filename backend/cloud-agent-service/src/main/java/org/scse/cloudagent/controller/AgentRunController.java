@@ -8,6 +8,7 @@ import org.scse.cloudagent.domain.Proposal;
 import org.scse.cloudagent.dto.CreateRunRequest;
 import org.scse.cloudagent.dto.CreateSessionRequest;
 import org.scse.cloudagent.dto.SessionResponse;
+import org.scse.cloudagent.dto.AgentSessionSummary;
 import org.scse.cloudagent.service.InMemoryAgentRunService;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.MediaType;
@@ -18,6 +19,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
@@ -42,10 +44,27 @@ public class AgentRunController {
         return runService.createSession(userId, request);
     }
 
+    @GetMapping("/sessions")
+    public List<AgentSessionSummary> listSessions(@RequestHeader(USER_HEADER) long userId) {
+        return runService.listSessions(userId);
+    }
+
     @GetMapping("/sessions/{sessionId}")
     public SessionResponse getSession(@RequestHeader(USER_HEADER) long userId,
                                       @PathVariable UUID sessionId) {
         return runService.getSession(userId, sessionId);
+    }
+
+    @GetMapping("/sessions/{sessionId}/runs")
+    public List<AgentRun> listSessionRuns(@RequestHeader(USER_HEADER) long userId,
+                                          @PathVariable UUID sessionId) {
+        return runService.listRuns(userId, sessionId);
+    }
+
+    @DeleteMapping("/sessions/{sessionId}")
+    public void deleteSession(@RequestHeader(USER_HEADER) long userId,
+                              @PathVariable UUID sessionId) {
+        runService.deleteSession(userId, sessionId);
     }
 
     @PostMapping("/runs")
