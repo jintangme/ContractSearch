@@ -16,16 +16,26 @@ public class AgentStartupValidator {
 
     @PostConstruct
     void validate() {
-        if (properties.enabled() && properties.internalToken().length() < 24) {
-            throw new IllegalStateException("AGENT_INTERNAL_TOKEN must contain at least 24 characters when AGENT_ENABLED=true");
+        if ((properties.enabled() || properties.knowledge().enabled())
+                && properties.internalToken().length() < 24) {
+            throw new IllegalStateException("AGENT_INTERNAL_TOKEN must contain at least 24 characters when Agent or Knowledge APIs are enabled");
         }
         if (properties.migrations().enabled()
                 && (properties.migrations().url().isBlank() || properties.migrations().username().isBlank())) {
             throw new IllegalStateException("Agent migration URL and username are required when migrations are enabled");
         }
+        if (properties.knowledge().enabled()
+                && (properties.knowledge().databaseUrl().isBlank()
+                || properties.knowledge().databaseUsername().isBlank())) {
+            throw new IllegalStateException("Knowledge database URL and username are required when Knowledge ingestion is enabled");
+        }
         if (properties.miniLoop().enabled()) {
             validateFixedDependency("AGENT_CONTRACT_SERVICE_URL", properties.dependencies().contractServiceBaseUrl(),
                     Set.of("127.0.0.1", "localhost", "cloud-service"));
+            validateFixedDependency("AGENT_RUNTIME_SERVICE_URL", properties.dependencies().runtimeBaseUrl(),
+                    Set.of("127.0.0.1", "localhost", "contract-runtime-service"));
+        }
+        if (properties.knowledge().enabled()) {
             validateFixedDependency("AGENT_RUNTIME_SERVICE_URL", properties.dependencies().runtimeBaseUrl(),
                     Set.of("127.0.0.1", "localhost", "contract-runtime-service"));
         }

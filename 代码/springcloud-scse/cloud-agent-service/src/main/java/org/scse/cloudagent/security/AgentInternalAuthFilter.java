@@ -27,7 +27,10 @@ public class AgentInternalAuthFilter extends OncePerRequestFilter {
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        return !properties.enabled() || !request.getRequestURI().startsWith("/api/agent/");
+        boolean protectedAgentPath = request.getRequestURI().startsWith("/api/agent/")
+                || request.getRequestURI().startsWith("/internal/agent/");
+        return (!properties.enabled() && !properties.knowledge().enabled())
+                || !protectedAgentPath;
     }
 
     @Override

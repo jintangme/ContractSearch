@@ -38,6 +38,14 @@ agent:
     runtime-base-url: ${AGENT_RUNTIME_SERVICE_URL:http://127.0.0.1:19090}
     contract-timeout-ms: ${AGENT_CONTRACT_TIMEOUT_MS:15000}
     compile-timeout-ms: ${AGENT_COMPILE_TIMEOUT_MS:45000}
+  knowledge:
+    enabled: ${AGENT_KNOWLEDGE_ENABLED:false}
+    database-url: ${AGENT_KNOWLEDGE_DB_URL:${AGENT_DB_URL:}}
+    database-username: ${AGENT_KNOWLEDGE_DB_USERNAME:${AGENT_DB_USERNAME:}}
+    database-password: ${AGENT_KNOWLEDGE_DB_PASSWORD:${AGENT_DB_PASSWORD:}}
+    corpus-name: ${AGENT_KNOWLEDGE_CORPUS_NAME:contractsearch}
+    corpus-version: ${AGENT_KNOWLEDGE_CORPUS_VERSION:phase2-dev}
+    max-batch-size: ${AGENT_KNOWLEDGE_MAX_BATCH_SIZE:50}
 
 management:
   endpoints:

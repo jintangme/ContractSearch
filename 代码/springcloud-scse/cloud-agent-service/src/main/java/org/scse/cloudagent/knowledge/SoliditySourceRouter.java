@@ -82,7 +82,7 @@ public class SoliditySourceRouter {
             return List.of();
         }
         List<NormalizedSourceFile> files = new ArrayList<>();
-        Iterator<Map.Entry<String, JsonNode>> fields = object.fields();
+        Iterator<Map.Entry<String, JsonNode>> fields = object.properties().iterator();
         while (fields.hasNext()) {
             Map.Entry<String, JsonNode> field = fields.next();
             JsonNode value = field.getValue();

@@ -1,6 +1,7 @@
 const express = require('express')
 const cors = require('cors')
 const { compileSolidity } = require('./compiler')
+const { parseSolidityAst } = require('./ast-parser')
 const { callContract, deployContract, initRuntime } = require('./runtime')
 
 const PORT = Number(process.env.PORT || 19090)
@@ -21,6 +22,11 @@ app.post('/api/runtime/compile', async (req, res) => {
     compilerVersion: req.body?.compilerVersion
   })
 
+  res.status(result.success ? 200 : 400).json(result)
+})
+
+app.post('/api/runtime/parse', (req, res) => {
+  const result = parseSolidityAst({ sources: req.body?.sources })
   res.status(result.success ? 200 : 400).json(result)
 })
 

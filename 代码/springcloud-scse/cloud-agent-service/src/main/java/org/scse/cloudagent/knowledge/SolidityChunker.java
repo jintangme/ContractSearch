@@ -4,6 +4,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -47,7 +48,8 @@ public class SolidityChunker {
         String content = source.substring(start, end);
         return new KnowledgeChunk(ordinal, kind, symbol, signature, path,
                 lineAt(source, start), lineAt(source, Math.max(start, end - 1)),
-                start, end, content, KnowledgeHashing.sha256(content));
+                start, end, content, KnowledgeHashing.sha256(content),
+                Map.of("parser", "solidity-lexical-v1"));
     }
 
     private int findDeclarationTerminator(String source, int from) {

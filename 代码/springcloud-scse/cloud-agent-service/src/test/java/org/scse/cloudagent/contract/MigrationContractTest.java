@@ -41,4 +41,18 @@ class MigrationContractTest {
             assertThat(sql).doesNotContain("alter table");
         }
     }
+
+    @Test
+    void thirdMigrationAddsAliasDedupAndIdempotentJobLedger() throws IOException {
+        try (var input = getClass().getResourceAsStream("/db/migration/V3__knowledge_ingestion_items.sql")) {
+            assertThat(input).isNotNull();
+            String sql = new String(input.readAllBytes(), StandardCharsets.UTF_8).toLowerCase();
+            assertThat(sql).contains("create table if not exists knowledge_source_alias");
+            assertThat(sql).contains("create table if not exists knowledge_ingestion_item");
+            assertThat(sql).contains("unique(corpus_version_id, existing_contract_id)");
+            assertThat(sql).contains("unique(job_id, existing_contract_id)");
+            assertThat(sql).doesNotContain("drop table");
+            assertThat(sql).doesNotContain("alter table");
+        }
+    }
 }

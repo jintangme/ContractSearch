@@ -11,7 +11,8 @@ public record AgentProperties(
         Provider provider,
         Migrations migrations,
         MiniLoop miniLoop,
-        Dependencies dependencies
+        Dependencies dependencies,
+        Knowledge knowledge
 ) {
     @ConstructorBinding
     public AgentProperties {
@@ -25,6 +26,9 @@ public record AgentProperties(
         dependencies = dependencies == null
                 ? new Dependencies("http://127.0.0.1:18081", "http://127.0.0.1:19090", 15000, 45000)
                 : dependencies;
+        knowledge = knowledge == null
+                ? new Knowledge(false, "", "", "", "contractsearch", "phase2-dev", 50)
+                : knowledge;
     }
 
     public AgentProperties(boolean enabled,
@@ -32,7 +36,17 @@ public record AgentProperties(
                            String model,
                            Provider provider,
                            Migrations migrations) {
-        this(enabled, internalToken, model, provider, migrations, null, null);
+        this(enabled, internalToken, model, provider, migrations, null, null, null);
+    }
+
+    public AgentProperties(boolean enabled,
+                           String internalToken,
+                           String model,
+                           Provider provider,
+                           Migrations migrations,
+                           MiniLoop miniLoop,
+                           Dependencies dependencies) {
+        this(enabled, internalToken, model, provider, migrations, miniLoop, dependencies, null);
     }
 
     public record Provider(String baseUrl, String apiKey, int timeoutMs, boolean thinkingEnabled) {
@@ -75,6 +89,25 @@ public record AgentProperties(
         private static String normalize(String value, String fallback) {
             String normalized = value == null || value.isBlank() ? fallback : value.trim();
             return normalized.endsWith("/") ? normalized.substring(0, normalized.length() - 1) : normalized;
+        }
+    }
+
+    public record Knowledge(
+            boolean enabled,
+            String databaseUrl,
+            String databaseUsername,
+            String databasePassword,
+            String corpusName,
+            String corpusVersion,
+            int maxBatchSize
+    ) {
+        public Knowledge {
+            databaseUrl = databaseUrl == null ? "" : databaseUrl;
+            databaseUsername = databaseUsername == null ? "" : databaseUsername;
+            databasePassword = databasePassword == null ? "" : databasePassword;
+            corpusName = corpusName == null || corpusName.isBlank() ? "contractsearch" : corpusName.trim();
+            corpusVersion = corpusVersion == null || corpusVersion.isBlank() ? "phase2-dev" : corpusVersion.trim();
+            maxBatchSize = maxBatchSize <= 0 ? 50 : Math.min(maxBatchSize, 200);
         }
     }
 }

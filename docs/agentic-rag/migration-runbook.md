@@ -4,8 +4,8 @@
 
 - `AGENT_MIGRATIONS_ENABLED=false` by default.
 - `AGENT_ENABLED=false` and `AGENT_ROUTE_ENABLED=false` by default.
-- V1 and V2 are additive and must not alter `smart_contract` or its embedding columns.
-- V2 only creates Knowledge Layer storage; it does not activate a corpus or retrieval index.
+- V1–V3 are additive and must not alter `smart_contract` or its embedding columns.
+- V2/V3 only create Knowledge Layer storage and ingestion ledgers; they do not activate a corpus or retrieval index.
 - Never test a new migration first against the running `mydatabase` database.
 
 ## Required pre-production sequence
@@ -33,9 +33,9 @@ The migration role should own only the relevant schema and should not be the app
 
 Keep `LEGACY_CONVERSATION_DDL_ENABLED=true` for one release. After schema equivalence and rolling-deployment tests pass, set it to `false`. Delete the legacy `@PostConstruct` DDL only in a later contract migration.
 
-## Phase 2A activation boundary
+## Phase 2 activation boundary
 
-Applying V2 creates empty tables only. Do not populate them until the ingestion writer has dry-run/resume/idempotency coverage. Do not add an `ACTIVE` corpus or route production Search to Knowledge tables during Phase 2A.
+Applying V2/V3 creates empty tables only. Population requires the default-off ingestion writer, a new immutable corpus version and the Knowledge runbook. Do not add an `ACTIVE` corpus or route production Search to Knowledge tables during Phase 2.
 
 ## Rollback
 

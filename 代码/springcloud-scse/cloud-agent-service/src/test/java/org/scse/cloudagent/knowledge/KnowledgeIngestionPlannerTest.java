@@ -8,7 +8,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class KnowledgeIngestionPlannerTest {
     private final SoliditySourceRouter router = new SoliditySourceRouter(new ObjectMapper());
     private final KnowledgeIngestionPlanner planner =
-            new KnowledgeIngestionPlanner(router, new SolidityChunker());
+            new KnowledgeIngestionPlanner(router, new SolidityChunker(), null, new SolidityAstChunker());
 
     @Test
     void recognizesSupportedSourceFormatsAndProducesStableHashes() {
@@ -67,5 +67,27 @@ class KnowledgeIngestionPlannerTest {
         assertThat(function.lineEnd()).isEqualTo(13);
         assertThat(function.content()).contains("require(amount > 0");
         assertThat(second).isEqualTo(first);
+    }
+
+    @Test
+    void astChunkerPreservesCompilerAndDeclarationMetadata() {
+        String declarationContent = "function deposit(uint256) {} ";
+        AstDeclaration declaration = new AstDeclaration(17, "FunctionDefinition", "function",
+                "deposit", "Vault", "public", "nonpayable", false,
+                java.util.List.of("uint256"), java.util.List.of(), java.util.List.of("onlyOwner"),
+                "Vault.sol", 10, 10 + declarationContent.length(), 2, 4,
+                "function deposit(uint256)", declarationContent);
+        AstParseResult result = new AstParseResult(true, "solc-standard-json-ast", "0.8.35",
+                java.util.List.of(declaration), java.util.List.of());
+
+        String prefix = "0123456789";
+        NormalizedSourceFile file = new NormalizedSourceFile("Vault.sol", prefix + declaration.content(),
+                prefix + declaration.content(), "raw", "normalized");
+        KnowledgeChunk chunk = new SolidityAstChunker().chunk(result, java.util.List.of(file)).get(0);
+
+        assertThat(chunk.kind()).isEqualTo(ChunkKind.FUNCTION);
+        assertThat(chunk.metadata()).containsEntry("astId", 17L)
+                .containsEntry("contractName", "Vault")
+                .containsEntry("compilerVersion", "0.8.35");
     }
 }

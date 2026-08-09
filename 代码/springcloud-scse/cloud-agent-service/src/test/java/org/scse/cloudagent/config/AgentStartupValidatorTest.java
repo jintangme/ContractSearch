@@ -6,6 +6,20 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class AgentStartupValidatorTest {
     @Test
+    void refusesEnabledKnowledgeApiWithoutTrustedToken() {
+        AgentProperties properties = new AgentProperties(false, "", "glm-4.5-air",
+                new AgentProperties.Provider("https://open.bigmodel.cn/api/paas/v4", "", 1000, false),
+                new AgentProperties.Migrations(false, "", "", ""),
+                new AgentProperties.MiniLoop(false, 6, 4, 2),
+                new AgentProperties.Dependencies("http://127.0.0.1:18081", "http://127.0.0.1:19090", 1000, 1000),
+                new AgentProperties.Knowledge(true, "jdbc:postgresql://127.0.0.1/test", "user", "password",
+                        "contractsearch", "test", 10));
+
+        assertThatThrownBy(() -> new AgentStartupValidator(properties).validate())
+                .hasMessageContaining("AGENT_INTERNAL_TOKEN");
+    }
+
+    @Test
     void refusesMiniLoopWithoutProviderKey() {
         AgentProperties properties = properties(
                 new AgentProperties.Provider("https://open.bigmodel.cn/api/paas/v4", "", 1000, false),

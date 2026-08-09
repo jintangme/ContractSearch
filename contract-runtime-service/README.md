@@ -126,6 +126,26 @@ curl -X POST http://localhost:19090/api/runtime/compile \
 
 如果返回 `versionMismatch: true`，通常表示源码声明的 Solidity 版本与当前可用编译器不兼容，或匹配的远程编译器加载失败。这种情况不一定代表源码本身有语法问题。
 
+## AST 解析接口（Knowledge Ingestion）
+
+```text
+POST http://localhost:19090/api/runtime/parse
+```
+
+请求使用 Solidity Standard JSON 风格的多文件 source map：
+
+```json
+{
+  "sources": {
+    "Vault.sol": "pragma solidity ^0.8.20; contract Vault { function deposit() public {} }"
+  }
+}
+```
+
+该接口固定使用 lockfile 中的 bundled `solc 0.8.35`，不会按请求下载远程编译器。响应不返回完整 AST，而只返回 ingestion 所需的 function/modifier/constructor/receive/fallback declaration metadata，包括 AST ID、contract、visibility、mutability、参数类型、modifier、file/line/char/byte span、signature、原文和 hash。总源码上限 1MB、文件数上限 100。
+
+若源码 pragma 与固定编译器不兼容，接口返回结构化 diagnostics；Knowledge ingestion 会明确记录 AST fallback，不会把 lexical fallback 宣称为 AST 结果。
+
 ## 部署接口
 
 ```text
