@@ -12,7 +12,8 @@ public class AgentRouteConfiguration {
     @Bean
     @ConditionalOnProperty(prefix = "agent.route", name = "enabled", havingValue = "true")
     RouteLocator agentRoute(RouteLocatorBuilder builder,
-                            @Value("${agent.route.internal-token:}") String internalToken) {
+                            @Value("${agent.route.internal-token:}") String internalToken,
+                            @Value("${agent.route.uri:lb://cloud-agent-service}") String agentServiceUri) {
         if (internalToken.length() < 24) {
             throw new IllegalStateException("AGENT_INTERNAL_TOKEN must contain at least 24 characters when agent route is enabled");
         }
@@ -22,7 +23,7 @@ public class AgentRouteConfiguration {
                         .filters(filters -> filters
                                 .removeRequestHeader("X-Agent-Internal-Token")
                                 .addRequestHeader("X-Agent-Internal-Token", internalToken))
-                        .uri("lb://cloud-agent-service"))
+                        .uri(agentServiceUri))
                 .build();
     }
 }

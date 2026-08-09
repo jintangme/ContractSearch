@@ -21,10 +21,8 @@ public class AuthController {
 
     @PostMapping("/login")
     public ResponseResult<LoginVo> login(@RequestBody LoginDto loginDto) {
-        System.out.println(loginDto);
         LoginVo loginVo = authService.login(loginDto);
-        System.out.println(loginVo);
-        if(loginVo.getLoginResult() == LoginResult.SUCCESS){
+        if (loginVo.getLoginResult() == LoginResult.SUCCESS) {
             return ResponseResult.success("登录成功",loginVo);
         }
         return ResponseResult.fail(loginVo.getMessage());
@@ -37,9 +35,8 @@ public class AuthController {
 
     @PostMapping("/register")
     @Operation(summary = "用户注册，传入参数：username 最大值32, password, nickname最大值32, email最大值64,均不可为空")
-    public ResponseResult<RegisterVo> register(@RequestBody RegisterDto userRegisterDto){
-        System.out.println(userRegisterDto);
-        if(userRegisterDto.getUsername().isEmpty()){
+    public ResponseResult<RegisterVo> register(@RequestBody RegisterDto userRegisterDto) {
+        if (userRegisterDto.getUsername().isEmpty()) {
             return ResponseResult.fail("用户名不能为空");
         }
         if(userRegisterDto.getUsername().length() > 32){

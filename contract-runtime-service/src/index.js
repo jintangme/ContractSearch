@@ -5,6 +5,7 @@ const { parseSolidityAst } = require('./ast-parser')
 const { callContract, deployContract, initRuntime } = require('./runtime')
 
 const PORT = Number(process.env.PORT || 19090)
+const HOST = process.env.HOST || '127.0.0.1'
 
 const app = express()
 
@@ -79,8 +80,8 @@ app.use((err, req, res, next) => {
 
 initRuntime()
   .then(() => {
-    const server = app.listen(PORT, () => {
-      console.log(`Contract runtime service listening on http://localhost:${PORT}`)
+    const server = app.listen(PORT, HOST, () => {
+      console.log(`Contract runtime service listening on http://${HOST}:${PORT}`)
       console.log('Local EVM sandbox initialized')
     })
 

@@ -3,6 +3,7 @@ const cors = require('cors')
 const { checkLeanSource } = require('./leanChecker')
 
 const PORT = Number(process.env.PORT || 19100)
+const HOST = process.env.HOST || '127.0.0.1'
 
 const app = express()
 
@@ -53,8 +54,8 @@ app.use((err, req, res, next) => {
   })
 })
 
-const server = app.listen(PORT, () => {
-  console.log(`Lean runtime service listening on http://localhost:${PORT}`)
+const server = app.listen(PORT, HOST, () => {
+  console.log(`Lean runtime service listening on http://${HOST}:${PORT}`)
   console.log(`Using Lean binary: ${process.env.LEAN_BIN || 'lean'}`)
 })
 

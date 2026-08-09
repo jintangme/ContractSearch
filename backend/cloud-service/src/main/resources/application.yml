@@ -3,7 +3,7 @@ spring:
   # 引入mysql
   datasource:
     driver-class-name: org.postgresql.Driver
-    url: jdbc:postgresql://localhost:5432/mydatabase    # 替换名称
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/mydatabase}
     username: ${POSTGRESQL_DB_USERNAME:myuser}          # 配置环境变量
     password: ${POSTGRESQL_DB_PASSWORD:mypassword}      # 配置环境变量
   servlet:
@@ -13,12 +13,13 @@ spring:
       enabled: true
   cloud:
     nacos:
-      serverAddr: 127.0.0.1:8848
+      serverAddr: ${NACOS_SERVER_ADDR:127.0.0.1:8848}
       discovery:
         server-addr: ${spring.cloud.nacos.server-addr}
+        enabled: ${NACOS_DISCOVERY_ENABLED:true}
   config:
     import:
-      - nacos:nacos-config-example.properties?refreshEnabled=true
+      - optional:nacos:nacos-config-example.properties?refreshEnabled=true
 
 mybatis-plus:
   mapper-locations: classpath*:mapper/*.xml

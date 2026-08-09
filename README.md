@@ -29,11 +29,9 @@ Gateway :18080 ───────────────┤
   └── /api/* ──────── Main Service :18081
                               │
                  PostgreSQL/ParadeDB :5432
-                              │
-                         Nacos :8848
 ```
 
-生产环境只应公开 `22`、`80` 和 `443`。`5432`、`8848`、`18080-18084`、`19090` 和 `19100` 应限制为本机或内网访问。
+小型单机生产环境推荐使用本机静态路由，不启动 Nacos。需要横向扩容或动态服务发现时再启用 Nacos。生产环境只应公开 `22`、`80` 和 `443`；`5432`、`8848`、`18080-18084`、`19090` 和 `19100` 应限制为本机或内网访问。
 
 ## 2. 项目目录
 
@@ -60,7 +58,7 @@ plan.md                   Agentic RAG 实施记录
 | 组件 | 默认端口 | 云端是否必须 | 对公网开放 |
 |---|---:|---|---|
 | Nginx | 80/443 | 是 | 是 |
-| Nacos | 8848 | 是 | 否 |
+| Nacos | 8848 | 单机静态路由不需要 | 否 |
 | PostgreSQL/ParadeDB | 5432 | 是 | 否 |
 | Spring Cloud Gateway | 18080 | 是 | 否 |
 | cloud-service | 18081 | 是 | 否 |
@@ -78,7 +76,7 @@ plan.md                   Agentic RAG 实施记录
 - Maven 3.9+。
 - Node.js 20 LTS 与 npm 10+。
 - PostgreSQL/ParadeDB，必须提供 `vector` 和 `pg_search` 扩展；恢复现有完整备份时还需兼容备份内声明的扩展。
-- Nacos 2.x。
+- Nacos 2.x（可选，仅动态服务发现模式需要）。
 - Nginx。
 - Lean 4.31.0（仅 Lean 功能需要）。
 - Python 3.10+（仅权威知识同步脚本需要）。
@@ -226,7 +224,14 @@ SPRING_DATASOURCE_URL=jdbc:postgresql://127.0.0.1:5432/mydatabase
 POSTGRESQL_DB_USERNAME=myuser
 POSTGRESQL_DB_PASSWORD=CHANGE_ME
 
-# Nacos
+# Small-server static routing (recommended)
+NACOS_DISCOVERY_ENABLED=false
+SPRING_CLOUD_NACOS_CONFIG_ENABLED=false
+SPRING_CLOUD_NACOS_CONFIG_IMPORT_CHECK_ENABLED=false
+CONTRACT_SERVICE_GATEWAY_URI=http://127.0.0.1:18081
+AGENT_SERVICE_GATEWAY_URI=http://127.0.0.1:18082
+
+# Nacos (only used when dynamic discovery is enabled)
 NACOS_SERVER_ADDR=127.0.0.1:8848
 SPRING_CLOUD_NACOS_SERVER_ADDR=127.0.0.1:8848
 
@@ -318,8 +323,8 @@ npm ci --omit=dev
 Vite 变量在构建时写入产物。创建 `frontend/.env.production`：
 
 ```dotenv
-VITE_RUNTIME_API_BASE=/runtime
-VITE_LEAN_API_BASE=/lean
+VITE_RUNTIME_API_BASE=/runtime-api
+VITE_LEAN_API_BASE=/lean-api
 ```
 
 构建：
@@ -343,7 +348,7 @@ npm run build
 ```ini
 [Unit]
 Description=ContractSearch Main Service
-After=network-online.target nacos.service postgresql.service
+After=network-online.target postgresql.service
 
 [Service]
 User=contractsearch
@@ -502,13 +507,13 @@ server {
         proxy_read_timeout 90s;
     }
 
-    location /runtime/ {
+    location /runtime-api/ {
         proxy_pass http://127.0.0.1:19090/;
         proxy_http_version 1.1;
         proxy_read_timeout 90s;
     }
 
-    location /lean/ {
+    location /lean-api/ {
         proxy_pass http://127.0.0.1:19100/;
         proxy_http_version 1.1;
         proxy_read_timeout 90s;
@@ -563,7 +568,7 @@ python3 scripts/agentic-rag/sync-authoritative-knowledge.py \
 首次部署建议严格按以下顺序：
 
 1. PostgreSQL/ParadeDB。
-2. Nacos。
+2. Nacos（仅动态服务发现模式）。
 3. `cloud-service`。
 4. `contract-runtime-service`。
 5. `lean-runtime-service`。
@@ -651,9 +656,8 @@ sudo nginx -t && sudo systemctl reload nginx
 
 ### Gateway 返回 503
 
-- 检查 Nacos 是否启动。
-- 检查 `cloud-service` 和 `cloud-agent-service` 是否已注册。
-- 检查服务是否使用相同的 Nacos 地址和 namespace。
+- 静态路由模式：检查 `CONTRACT_SERVICE_GATEWAY_URI` 与 `AGENT_SERVICE_GATEWAY_URI`，并确认对应本机端口已监听。
+- Nacos 模式：检查 Nacos 是否启动、两个服务是否已注册，以及各服务的 Nacos 地址和 namespace 是否一致。
 
 ### Agent 返回 `Trusted gateway token required`
 
@@ -682,7 +686,7 @@ sudo nginx -t && sudo systemctl reload nginx
 
 ### Contract Lab 在浏览器访问 localhost
 
-- 必须在构建前设置 `VITE_RUNTIME_API_BASE=/runtime` 和 `VITE_LEAN_API_BASE=/lean`。
+- 必须在构建前设置 `VITE_RUNTIME_API_BASE=/runtime-api` 和 `VITE_LEAN_API_BASE=/lean-api`。
 - Vite 环境变量是构建时变量，修改后必须重新执行 `npm run build`。
 
 ### Lean 检查失败
