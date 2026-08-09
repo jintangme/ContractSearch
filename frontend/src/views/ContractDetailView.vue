@@ -59,7 +59,7 @@
                 在 Etherscan 查看
               </a>
 
-              <button class="action-btn action-btn--primary" @click="aiDrawerOpen = true">
+              <button class="action-btn action-btn--primary" @click="openInAiConversation">
                 AI 合约解读
               </button>
             </div>
@@ -136,84 +136,6 @@
           </section>
 
         </main>
-
-        <div v-if="aiDrawerOpen" class="ai-backdrop" @click="aiDrawerOpen = false"></div>
-        <aside class="ai-panel" :class="{ 'ai-panel--open': aiDrawerOpen }">
-          <div class="ai-panel__head">
-            <div>
-              <p class="panel-eyebrow">SMART INSIGHT</p>
-              <h2>AI 合约解读</h2>
-            </div>
-            <button class="drawer-close" @click="aiDrawerOpen = false" aria-label="关闭 AI 解读面板">
-              ×
-            </button>
-          </div>
-          <p class="ai-disclaimer">源码结构、权限关系与风险线索的智能整理。</p>
-
-          <div class="ai-model-row">
-            <AiModelSelect v-model="selectedModel" @update:model-value="persistSelectedModel" />
-          </div>
-
-          <button class="ai-run-btn" @click="handleAiExplain()" :disabled="aiLoading">
-            <span v-if="aiLoading" class="spinner spinner--light"></span>
-            {{ aiLoading ? '分析中...' : '生成分析' }}
-          </button>
-
-          <div class="ai-tags" v-if="aiMode === 'quick' && aiSummary && !aiLoading">
-            <span v-for="tag in aiInsightTags" :key="tag">{{ tag }}</span>
-          </div>
-
-          <p v-if="aiError" class="error-msg">{{ aiError }}</p>
-
-          <template v-else-if="showDeepOverview">
-            <section class="deep-overview-card">
-              <div class="deep-overview-card__head">
-                <span>分析总览</span>
-                <strong>{{ aiOverview.overallRiskLevel }}风险</strong>
-              </div>
-              <div class="deep-overview-grid">
-                <div>
-                  <span>合约类型</span>
-                  <strong>{{ aiOverview.contractType }}</strong>
-                </div>
-                <div>
-                  <span>复杂度</span>
-                  <strong>{{ aiOverview.complexityLevel }}</strong>
-                </div>
-              </div>
-              <p>{{ aiOverview.corePurpose }}</p>
-            </section>
-
-            <section class="risk-score-card">
-              <div class="risk-score-card__head">
-                <h3>风险维度</h3>
-                <span>0-100</span>
-              </div>
-              <div class="risk-row" v-for="item in riskRows" :key="item.label">
-                <div class="risk-row__meta">
-                  <span>{{ item.label }}</span>
-                  <strong>{{ item.value }}</strong>
-                </div>
-                <div class="risk-track">
-                  <span :style="{ width: `${item.value}%` }"></span>
-                </div>
-              </div>
-            </section>
-          </template>
-
-          <div v-if="!aiError && !aiLoading && aiSections.length > 0" class="ai-section-list">
-            <article v-for="section in aiSections" :key="section.title" class="ai-result-card">
-              <h3>{{ section.title }}</h3>
-              <p>{{ section.content }}</p>
-            </article>
-            <p v-if="aiModelUsed" class="ai-generated-by">由 {{ aiModelUsed }} 生成</p>
-          </div>
-
-          <div v-else-if="!showDeepOverview && !aiError && !aiLoading" class="ai-empty">
-            <p class="ai-empty-title">智能分析面板</p>
-            <p class="ai-empty-text">选择模型后生成合约结构、权限关系与风险线索分析。</p>
-          </div>
-        </aside>
       </div>
 
       <div v-if="codeViewer.open" class="code-viewer-backdrop" @click="closeCodeViewer">
@@ -342,10 +264,9 @@
 import { ref, computed, nextTick, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { contractApi } from '@/api'
-import AiModelSelect from '@/components/AiModelSelect.vue'
-import { getStoredAiModel, persistAiModel } from '@/config/aiModels'
 
 const DETAIL_TO_LAB_KEY = 'contractDetailToLabSource'
+const DETAIL_TO_AGENT_KEY = 'contractDetailToAgentContext'
 const router = useRouter()
 const route = useRoute()
 const id = route.params.id
@@ -365,7 +286,6 @@ const creatingFolderInline = ref(false)
 const favoriteCreatingFolder = ref(false)
 const inlineFolderInput = ref(null)
 const copied = ref({ source: false, abi: false })
-const aiDrawerOpen = ref(false)
 const codeViewer = ref({
   open: false,
   title: '',
@@ -375,15 +295,6 @@ const codeViewer = ref({
   copyLabel: '复制内容',
 })
 
-const aiLoading = ref(false)
-const aiError = ref('')
-const aiMode = ref('deep')
-const selectedModel = ref(getStoredAiModel())
-const aiModelUsed = ref('')
-const aiResults = ref({
-  quick: { summary: '', overview: null },
-  deep: { summary: '', overview: null },
-})
 const labTransferMessage = ref('')
 
 const abiText = computed(() => {
@@ -431,39 +342,6 @@ const selectedFavoriteFolder = computed(() => {
     || favoriteFolders.value.find(folder => folder.isDefault)
     || favoriteFolders.value[0]
     || null
-})
-
-const currentAiResult = computed(() => aiResults.value[aiMode.value] || { summary: '', overview: null })
-
-const aiSummary = computed(() => currentAiResult.value.summary || '')
-
-const aiOverview = computed(() => currentAiResult.value.overview)
-
-const aiSections = computed(() => parseAiSections(aiSummary.value, aiMode.value))
-
-const showDeepOverview = computed(() => {
-  return aiMode.value === 'deep' && !aiLoading.value && aiOverview.value
-})
-
-const riskRows = computed(() => {
-  const scores = aiOverview.value?.riskScores || {}
-  return [
-    { label: '权限风险', value: normalizeRiskScore(scores.permissionRisk) },
-    { label: '资产流转风险', value: normalizeRiskScore(scores.assetFlowRisk) },
-    { label: '复杂度风险', value: normalizeRiskScore(scores.complexityRisk) },
-  ]
-})
-
-const aiInsightTags = computed(() => {
-  const text = `${aiSummary.value} ${contract.value?.sourceCode || ''}`.toLowerCase()
-  const tags = []
-  if (text.includes('ownable') || text.includes('owner') || text.includes('权限')) tags.push('权限结构')
-  if (text.includes('transfer') || text.includes('asset') || text.includes('资产')) tags.push('资产流转')
-  if (text.includes('risk') || text.includes('风险')) tags.push('风险提示')
-  if (text.includes('pause') || text.includes('pausable')) tags.push('可暂停机制')
-  if (text.includes('whitelist') || text.includes('白名单')) tags.push('访问控制')
-  if (tags.length === 0) tags.push('结构化分析')
-  return tags.slice(0, 5)
 })
 
 onMounted(async () => {
@@ -613,43 +491,6 @@ async function confirmFavorite() {
   }
 }
 
-function setAiMode(mode) {
-  aiMode.value = mode
-  aiError.value = ''
-}
-
-function persistSelectedModel() {
-  selectedModel.value = persistAiModel(selectedModel.value)
-}
-
-async function handleAiExplain(mode = 'deep') {
-  aiLoading.value = true
-  aiError.value = ''
-  aiMode.value = mode
-  persistSelectedModel()
-
-  try {
-    const res = await contractApi.getAiExplain(id, selectedModel.value)
-    if (!res.status) {
-      throw new Error(res.message || 'AI 解读生成失败')
-    }
-    aiModelUsed.value = res.data?.modelUsed || selectedModel.value
-    console.info(`[explain] 请求模型：${aiModelUsed.value}`)
-    aiResults.value = {
-      ...aiResults.value,
-      [mode]: {
-        summary: res.data?.summary || '暂时无法生成解释',
-        overview: mode === 'deep' ? normalizeAiOverview(res.data) : null,
-      },
-    }
-  } catch (err) {
-    console.warn('AI 解读生成失败', err)
-    aiError.value = '生成失败，请重试'
-  } finally {
-    aiLoading.value = false
-  }
-}
-
 async function copyText(text, key) {
   try {
     await navigator.clipboard.writeText(text || '')
@@ -665,6 +506,22 @@ async function copyText(text, key) {
 function buildLabFileName(name) {
   const base = String(name || '').trim().replace(/[^\w\u4e00-\u9fa5-]/g, '')
   return `${base || 'Contract'}.sol`
+}
+
+function openInAiConversation() {
+  if (!contract.value) return
+  try {
+    sessionStorage.setItem(DETAIL_TO_AGENT_KEY, JSON.stringify({
+      contractId: Number(id),
+      createdAt: Date.now()
+    }))
+    router.push('/conversation')
+  } catch {
+    labTransferMessage.value = '无法引用当前合约，请检查浏览器存储权限'
+    window.setTimeout(() => {
+      labTransferMessage.value = ''
+    }, 2200)
+  }
 }
 
 function openInContractLab() {
@@ -727,86 +584,6 @@ function closeCodeViewer() {
     ...codeViewer.value,
     open: false,
   }
-}
-
-function parseAiSections(text, mode) {
-  const raw = String(text || '').trim()
-  if (!raw) return []
-
-  const titles = mode === 'deep'
-    ? ['合约定位', '功能模块', '权限结构', '资产与调用逻辑', '风险提示', '应用场景与阅读建议']
-    : ['一句话总结', '主要用途', '核心机制', '适合关注的点']
-
-  const sections = []
-  titles.forEach((title, index) => {
-    const start = raw.indexOf(title)
-    if (start < 0) return
-    const nextStarts = titles
-      .slice(index + 1)
-      .map(nextTitle => raw.indexOf(nextTitle))
-      .filter(pos => pos > start)
-    const end = nextStarts.length ? Math.min(...nextStarts) : raw.length
-    const content = cleanAiSectionText(raw.slice(start + title.length, end), titles)
-    if (content) sections.push({ title, content })
-  })
-
-  if (sections.length > 0) return sections
-  return [{ title: '分析结果', content: cleanAiSectionText(raw, titles) }]
-}
-
-function cleanAiSectionText(value, titles = []) {
-  let text = String(value || '')
-    .replace(/\r/g, '')
-    .replace(/^[:：\s\n]+/, '')
-    .replace(/^[（(]?[一二三四五六七八九十][）)]?[、.．:：\s\n]+/g, '')
-    .replace(/^\d+[.．、:：\s\n]+/g, '')
-    .trim()
-
-  titles.forEach((title) => {
-    const escaped = title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-    text = text
-      .replace(new RegExp(`^${escaped}[：:\\s\\n]*`, 'g'), '')
-      .replace(new RegExp(`[\\s\\n]*[（(]?[一二三四五六七八九十][）)]?[、.．]?\\s*$`, 'g'), '')
-      .replace(new RegExp(`[\\s\\n]*\\d+[.．、]?\\s*$`, 'g'), '')
-  })
-
-  return text
-    .replace(/(?:^|\n)\s*[（(]?[一二三四五六七八九十][）)]?[、.．]\s*(?=\n|$)/g, '')
-    .replace(/(?:^|\n)\s*\d+[.．、]\s*(?=\n|$)/g, '')
-    .replace(/[ \t]+\n/g, '\n')
-    .trim()
-}
-
-function normalizeAiOverview(data = {}) {
-  const riskScores = data.riskScores || {}
-  return {
-    contractType: cleanOverviewText(data.contractType) || 'Smart Contract',
-    complexityLevel: cleanOverviewText(data.complexityLevel) || '中',
-    overallRiskLevel: cleanOverviewText(data.overallRiskLevel) || '中',
-    corePurpose: cleanOverviewText(data.corePurpose) || '核心用途、结构复杂度与主要风险分布。',
-    riskScores: {
-      permissionRisk: normalizeRiskScore(riskScores.permissionRisk),
-      assetFlowRisk: normalizeRiskScore(riskScores.assetFlowRisk),
-      complexityRisk: normalizeRiskScore(riskScores.complexityRisk),
-    },
-  }
-}
-
-function cleanOverviewText(value) {
-  return String(value || '')
-    .replace(/\r/g, '')
-    .replace(/\n+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .replace(/^[：:\s]+/, '')
-    .replace(/^[（(]?[一二三四五六七八九十][）)]?[、.．:：\s]+/g, '')
-    .replace(/^\d+[.．、:：\s]+/g, '')
-    .trim()
-}
-
-function normalizeRiskScore(value) {
-  const number = Number(value)
-  if (!Number.isFinite(number)) return 0
-  return Math.max(0, Math.min(100, Math.round(number)))
 }
 
 function buildDescriptionSummary(description) {
@@ -889,8 +666,7 @@ function buildDescriptionSummary(description) {
 }
 
 .hero-panel,
-.section-card,
-.ai-panel {
+.section-card {
   position: relative;
   background: linear-gradient(180deg, #ffffff 0%, #fcfcfd 100%);
   border: 1px solid #e7eaf0;
@@ -1078,45 +854,6 @@ function buildDescriptionSummary(description) {
   color: #374151 !important;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   word-break: break-word;
-}
-
-.ai-panel {
-  position: fixed;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 220;
-  width: min(460px, calc(100vw - 28px));
-  padding: 22px;
-  border-radius: 24px 0 0 24px;
-  padding: 18px;
-  border-color: #dbe6f5;
-  background:
-    radial-gradient(circle at top right, rgba(232, 240, 255, 0.72), transparent 34%),
-    linear-gradient(180deg, #ffffff 0%, #fbfcfe 100%);
-  box-shadow:
-    -24px 0 60px rgba(15, 23, 42, 0.18),
-    inset 1px 0 0 rgba(255,255,255,0.75);
-  transform: translateX(104%) scale(0.985);
-  opacity: 0;
-  transition:
-    transform 0.32s cubic-bezier(0.22, 1, 0.36, 1),
-    opacity 0.22s ease;
-  overflow-y: auto;
-}
-
-.ai-panel--open {
-  transform: translateX(0) scale(1);
-  opacity: 1;
-}
-
-.ai-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 210;
-  background: rgba(15, 23, 42, 0.24);
-  backdrop-filter: blur(5px);
-  animation: backdropFade 0.22s ease both;
 }
 
 .code-viewer-backdrop {
@@ -1459,14 +1196,6 @@ function buildDescriptionSummary(description) {
   white-space: pre;
 }
 
-.ai-panel__head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 12px;
-}
-
 .drawer-close {
   width: 32px;
   height: 32px;
@@ -1490,269 +1219,6 @@ function buildDescriptionSummary(description) {
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.14em;
-}
-
-.ai-panel h2 {
-  margin: 0;
-  color: #111827;
-  font-size: 20px;
-  letter-spacing: -0.03em;
-}
-
-.ai-disclaimer {
-  margin: 0 0 14px;
-  color: #6b7280;
-  font-size: 12px;
-  line-height: 1.7;
-}
-
-.ai-mode-switch {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 8px;
-  margin-bottom: 12px;
-}
-
-.ai-model-row {
-  display: flex;
-  align-items: center;
-  margin-bottom: 12px;
-}
-
-.ai-generated-by {
-  margin: 4px 0 0;
-  color: #9ca3af;
-  font-size: 11px;
-}
-
-.mode-btn {
-  text-align: left;
-  border: 1px solid #e5e7eb;
-  border-radius: 16px;
-  background: #ffffff;
-  padding: 12px;
-  cursor: pointer;
-  transition:
-    border-color 0.2s ease,
-    background 0.2s ease,
-    box-shadow 0.2s ease,
-    transform 0.2s ease;
-}
-
-.mode-btn strong,
-.mode-btn span {
-  display: block;
-}
-
-.mode-btn strong {
-  color: #111827;
-  font-size: 13px;
-}
-
-.mode-btn span {
-  margin-top: 4px;
-  color: #8a94a3;
-  font-size: 12px;
-}
-
-.mode-btn.active {
-  border-color: #cbd8ec;
-  background: #f8fbff;
-  box-shadow:
-    0 8px 18px rgba(15, 23, 42, 0.04),
-    inset 0 1px 0 rgba(255,255,255,0.9);
-}
-
-.mode-btn:hover:not(:disabled) {
-  transform: translateY(-1px);
-}
-
-.ai-run-btn {
-  width: 100%;
-  height: 44px;
-  border: none;
-  border-radius: 16px;
-  background: linear-gradient(180deg, #111827 0%, #0f172a 100%);
-  color: #ffffff;
-  font-size: 14px;
-  font-weight: 700;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  margin-bottom: 14px;
-  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.12);
-}
-
-.ai-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 7px;
-  margin-bottom: 14px;
-}
-
-.ai-tags span {
-  display: inline-flex;
-  align-items: center;
-  height: 26px;
-  padding: 0 9px;
-  border-radius: 999px;
-  background: #f5f7fa;
-  color: #667085;
-  border: 1px solid #edf0f4;
-  font-size: 11px;
-  font-weight: 700;
-}
-
-.deep-overview-card,
-.risk-score-card {
-  border: 1px solid #e4eaf3;
-  background: rgba(255,255,255,0.86);
-  border-radius: 18px;
-  padding: 14px;
-  margin-bottom: 10px;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.85);
-}
-
-.deep-overview-card__head,
-.risk-score-card__head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  margin-bottom: 12px;
-}
-
-.deep-overview-card__head span,
-.risk-score-card__head h3 {
-  margin: 0;
-  color: #111827;
-  font-size: 14px;
-  font-weight: 700;
-}
-
-.deep-overview-card__head strong,
-.risk-score-card__head span {
-  color: #667085;
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.deep-overview-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-  margin-bottom: 12px;
-}
-
-.deep-overview-grid div {
-  min-width: 0;
-  border: 1px solid #edf0f4;
-  border-radius: 14px;
-  background: #f8fafc;
-  padding: 10px;
-}
-
-.deep-overview-grid span {
-  display: block;
-  margin-bottom: 5px;
-  color: #98a2b3;
-  font-size: 11px;
-  font-weight: 700;
-}
-
-.deep-overview-grid strong {
-  display: block;
-  color: #111827;
-  font-size: 13px;
-  font-weight: 700;
-  line-height: 1.45;
-  word-break: break-word;
-}
-
-.deep-overview-card p {
-  margin: 0;
-  color: #475467;
-  font-size: 13px;
-  line-height: 1.78;
-}
-
-.risk-row + .risk-row {
-  margin-top: 12px;
-}
-
-.risk-row__meta {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 7px;
-  color: #475467;
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.risk-row__meta strong {
-  color: #111827;
-  font-size: 12px;
-}
-
-.risk-track {
-  height: 7px;
-  border-radius: 999px;
-  background: #edf1f6;
-  overflow: hidden;
-}
-
-.risk-track span {
-  display: block;
-  height: 100%;
-  border-radius: inherit;
-  background: linear-gradient(90deg, #98a2b3 0%, #475467 100%);
-  transition: width 0.38s cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.ai-section-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.ai-result-card,
-.ai-empty {
-  border: 1px solid #e4eaf3;
-  background: rgba(255,255,255,0.82);
-  border-radius: 18px;
-  padding: 14px;
-}
-
-.ai-result-card h3 {
-  margin: 0 0 8px;
-  color: #111827;
-  font-size: 14px;
-}
-
-.ai-result-card p {
-  margin: 0;
-  color: #475467;
-  font-size: 13px;
-  line-height: 1.85;
-  white-space: pre-wrap;
-}
-
-.ai-empty-title {
-  margin: 0 0 8px;
-  font-size: 14px;
-  font-weight: 700;
-  color: #111827;
-}
-
-.ai-empty-text {
-  margin: 0;
-  font-size: 13px;
-  line-height: 1.8;
-  color: #6b7280;
 }
 
 .action-btn {
@@ -1815,9 +1281,7 @@ function buildDescriptionSummary(description) {
   flex: 0 0 auto;
 }
 
-.action-btn:disabled,
-.ai-run-btn:disabled,
-.mode-btn:disabled {
+.action-btn:disabled {
   opacity: 0.7;
   cursor: not-allowed;
   transform: none;
@@ -1881,11 +1345,6 @@ function buildDescriptionSummary(description) {
 
   .code-block {
     border-radius: 16px;
-  }
-
-  .ai-panel {
-    width: 100vw;
-    border-radius: 0;
   }
 
   .code-viewer-backdrop {

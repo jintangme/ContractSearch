@@ -218,6 +218,8 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { agentApi, contractApi } from '@/api'
 import MarkdownMessage from '@/components/MarkdownMessage.vue'
 
+const DETAIL_TO_AGENT_KEY = 'contractDetailToAgentContext'
+
 const currentAgentSessionId = ref(null)
 const inputText = ref('')
 const messages = ref([])
@@ -256,6 +258,7 @@ watch(messages, () => scrollToBottom(), { deep: true })
 
 onMounted(async () => {
   await loadSessions()
+  await consumeContractDetailTransfer()
   window.addEventListener('conversation:new', resetConversation)
 })
 
@@ -681,6 +684,37 @@ async function attachContract(item) {
     closePicker()
   } catch {
     errorMessage.value = '附件解析失败'
+  }
+}
+
+async function consumeContractDetailTransfer() {
+  const raw = sessionStorage.getItem(DETAIL_TO_AGENT_KEY)
+  if (!raw) return
+  sessionStorage.removeItem(DETAIL_TO_AGENT_KEY)
+  try {
+    const transfer = JSON.parse(raw)
+    const contractId = Number(transfer?.contractId)
+    if (!Number.isInteger(contractId) || contractId <= 0) return
+    const response = await contractApi.getContractDetail(contractId)
+    const detail = response?.data
+    if (!detail) throw new Error('Contract not found')
+    addAttachment({
+      contractId,
+      fileName: `${detail.contractName || 'Contract'}.sol`,
+      fileType: 'sol',
+      sourceType: 'contract',
+      contentText: [
+        `合约名：${detail.contractName || ''}`,
+        `地址：${detail.address || ''}`,
+        `类型：${detail.category || ''}`,
+        `摘要：${detail.description || ''}`,
+        '源码：',
+        detail.sourceCode || ''
+      ].join('\n')
+    })
+    inputText.value = `请解读 ${detail.contractName || '当前合约'}，说明其核心功能、权限结构、主要风险和适用场景。`
+  } catch {
+    errorMessage.value = '无法引用该合约，请重新选择'
   }
 }
 

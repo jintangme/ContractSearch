@@ -174,7 +174,6 @@ function parseSseFrame(frame) {
 export const contractApi = {
   getAllContracts: () => http.get('/contracts'),
   getContractDetail: (id) => http.get(`/contracts/${id}`),
-  getAiExplain: (id, model) => http.get(`/contracts/${id}/ai-explain`, { params: { model, mode: 'deep' } }),
   favoriteContract: (id, data = {}) => http.put(`/contracts/${id}/favorite`, data),
   unfavoriteContract: (id) => http.delete(`/contracts/${id}/favorite`),
   getFavorites: () => http.get(`/contracts/favorites`),
