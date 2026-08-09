@@ -31,6 +31,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Consumer;
 
 @Component
 public class MiniAgentLoopEngine {
@@ -62,11 +63,19 @@ public class MiniAgentLoopEngine {
     }
 
     public MiniLoopResult execute(UUID runId, long userId, String task) {
-        return execute(runId, userId, task, Map.of());
+        return execute(runId, userId, task, Map.of(), event -> { });
     }
 
     public MiniLoopResult execute(UUID runId, long userId, String task, Map<String, Object> workspaceContext) {
-        Context context = new Context();
+        return execute(runId, userId, task, workspaceContext, event -> { });
+    }
+
+    public MiniLoopResult execute(UUID runId,
+                                  long userId,
+                                  String task,
+                                  Map<String, Object> workspaceContext,
+                                  Consumer<AgentEvent> eventSink) {
+        Context context = new Context(eventSink);
         move(context, AgentSignal.START_PLAN, "run.plan", Map.of("mode", "MINI_AGENTIC_RAG"));
         try {
             while (context.steps < properties.miniLoop().maxSteps()) {
@@ -224,8 +233,10 @@ public class MiniAgentLoopEngine {
     }
 
     private void addEvent(Context context, String type, Map<String, Object> data) {
-        context.events.add(new AgentEvent(context.events.size() + 1L, type, Instant.now(),
-                Map.of("state", context.state.name(), "payload", data)));
+        AgentEvent event = new AgentEvent(context.events.size() + 1L, type, Instant.now(),
+                Map.of("state", context.state.name(), "payload", data));
+        context.events.add(event);
+        context.eventSink.accept(event);
     }
 
     private String toJson(Object value) {
@@ -237,6 +248,7 @@ public class MiniAgentLoopEngine {
     }
 
     private static final class Context {
+        private final Consumer<AgentEvent> eventSink;
         private AgentRunState state = AgentRunState.RECEIVED;
         private String answer;
         private int steps;
@@ -246,5 +258,9 @@ public class MiniAgentLoopEngine {
         private final List<EvidenceItem> evidence = new ArrayList<>();
         private final List<String> observations = new ArrayList<>();
         private final Set<String> invocations = new LinkedHashSet<>();
+
+        private Context(Consumer<AgentEvent> eventSink) {
+            this.eventSink = eventSink == null ? event -> { } : eventSink;
+        }
     }
 }

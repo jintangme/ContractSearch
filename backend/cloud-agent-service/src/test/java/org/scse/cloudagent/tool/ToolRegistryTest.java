@@ -19,6 +19,13 @@ class ToolRegistryTest {
     }
 
     @Test
+    void resolvesUnversionedModelAliasToCanonicalV1Tool() {
+        ToolRegistry registry = new ToolRegistry(List.of(new MockEchoTool()));
+
+        assertThat(registry.require("mock_echo").definition().name()).isEqualTo("mock_echo.v1");
+    }
+
+    @Test
     void rejectsInvalidJsonAndNonObjectArguments() {
         assertThatThrownBy(() -> validator.parseObject("{broken"))
                 .isInstanceOf(InvalidToolArgumentsException.class);

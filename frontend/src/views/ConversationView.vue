@@ -22,11 +22,12 @@
 
       <div ref="messageListRef" class="message-list">
         <div v-if="!messages.length" class="empty-state">
-          <h2>有什么想了解的？</h2>
+          <h2>直接告诉 Agent 你想完成什么</h2>
+          <p>它会自动判断是否检索合约库、领域知识库，或调用编译与安全工具，并展示执行过程和证据。</p>
           <div class="suggestions">
-            <button type="button" @click="useSuggestion('解释这个合约')">解释这个合约</button>
-            <button type="button" @click="useSuggestion('分析代码风险')">分析代码风险</button>
-            <button type="button" @click="useSuggestion('比较 ERC20 和 ERC721')">比较 ERC20 和 ERC721</button>
+            <button type="button" @click="useSuggestion('找一个适合积分系统、普通用户不能随意 mint 的 ERC20 合约，并给出证据')">查找可复用 ERC20</button>
+            <button type="button" @click="useSuggestion('比较合约库中 ERC20 与 ERC721 的实现和安全差异，并说明依据')">比较合约与标准</button>
+            <button type="button" @click="useSuggestion('找一个多签钱包合约，检查源码、编译结果和主要风险')">检索并验证多签合约</button>
           </div>
         </div>
 
@@ -48,15 +49,16 @@
             <section v-if="message.agentRun" class="agent-run-card" :class="`agent-run-card--${String(message.agentRun.state || '').toLowerCase()}`">
               <div class="agent-run-head">
                 <div>
-                  <strong>{{ message.agentRun.state === 'COMPLETE' ? 'Agent 任务完成' : 'Agent 任务未完成' }}</strong>
+                  <strong>{{ agentRunTitle(message.agentRun.state) }}</strong>
                   <span>{{ message.agentRun.steps }} 次决策 · {{ message.agentRun.toolCalls }} 次工具 · {{ message.agentRun.retrievalRounds }} 轮检索</span>
                 </div>
                 <code>{{ message.agentRun.model }}</code>
               </div>
-              <ol v-if="message.agentRun.toolSteps?.length" class="agent-step-list">
-                <li v-for="step in message.agentRun.toolSteps" :key="`${step.sequence}-${step.tool}`">
-                  <span>{{ toolLabel(step.tool) }}</span>
-                  <small>已完成</small>
+              <ol v-if="message.agentRun.timeline?.length" class="agent-step-list">
+                <li v-for="step in message.agentRun.timeline" :key="step.key" :class="`agent-step--${step.status}`">
+                  <span>{{ step.label }}</span>
+                  <small>{{ timelineStatusLabel(step.status) }}</small>
+                  <p v-if="step.detail">{{ step.detail }}</p>
                 </li>
               </ol>
               <details v-if="message.agentRun.evidence?.length" class="agent-evidence">
@@ -486,11 +488,13 @@ async function sendAgentMessage({ text, assistantLocalId, workspaceContext }) {
       })
       currentAgentSessionId.value = session?.id || null
     }
-    const run = await agentApi.createRun({
+    const createdRun = await agentApi.createRun({
       sessionId: currentAgentSessionId.value,
       task: text,
       workspaceContext,
     })
+    updateAgentProgress(assistantLocalId, createdRun)
+    const run = await waitForAgentRun(createdRun?.id, assistantLocalId)
     const agentRun = summarizeAgentRun(run)
     const completed = run?.state === 'COMPLETE'
     replaceMessage(assistantLocalId, {
@@ -518,7 +522,7 @@ async function sendAgentMessage({ text, assistantLocalId, workspaceContext }) {
         steps: 0,
         toolCalls: 0,
         retrievalRounds: 0,
-        toolSteps: [],
+        timeline: [],
         evidence: [],
       },
     })
@@ -536,12 +540,7 @@ function summarizeAgentRun(run = {}) {
     steps: Number(run.steps || 0),
     toolCalls: Number(run.toolCalls || 0),
     retrievalRounds: Number(run.retrievalRounds || 0),
-    toolSteps: events
-      .filter(event => event?.type === 'tool.completed')
-      .map(event => ({
-        sequence: event.sequence,
-        tool: event?.data?.payload?.tool || '未知工具',
-      })),
+    timeline: buildAgentTimeline(events, run.state),
     evidence: Array.isArray(run.evidence)
       ? run.evidence.slice(0, 20).map(item => ({
           ...item,
@@ -549,6 +548,83 @@ function summarizeAgentRun(run = {}) {
         }))
       : [],
   }
+}
+
+async function waitForAgentRun(runId, assistantLocalId) {
+  if (!runId) throw new Error('Agent Run ID missing')
+  const deadline = Date.now() + 300000
+  while (Date.now() < deadline) {
+    await delay(700)
+    const run = await agentApi.getRun(runId)
+    updateAgentProgress(assistantLocalId, run)
+    if (['COMPLETE', 'FAILED'].includes(run?.state)) return run
+  }
+  throw new Error('Agent 执行超时')
+}
+
+function updateAgentProgress(assistantLocalId, run = {}) {
+  replaceMessage(assistantLocalId, {
+    localId: assistantLocalId,
+    role: 'assistant',
+    content: 'Agent 正在执行任务…',
+    loading: !['COMPLETE', 'FAILED'].includes(run?.state),
+    agentLoading: true,
+    modelUsed: run?.model || 'glm-4.5-air',
+    createdAt: run?.updatedAt || new Date().toISOString(),
+    attachments: [],
+    agentRun: summarizeAgentRun(run),
+  })
+}
+
+function buildAgentTimeline(events = [], runState = 'RECEIVED') {
+  const timeline = []
+  const toolRows = new Map()
+  const add = (key, label, status = 'complete', detail = '') => {
+    const existing = timeline.find(item => item.key === key)
+    if (existing) Object.assign(existing, { label, status, detail })
+    else timeline.push({ key, label, status, detail })
+  }
+  if (!events.length) add('received', '接收问题并准备规划', runState === 'FAILED' ? 'failed' : 'running')
+  events.forEach(event => {
+    const payload = event?.data?.payload || {}
+    if (event.type === 'run.plan') add('plan', '理解问题并制定执行计划')
+    if (event.type === 'model.action') {
+      const action = payload.actionType === 'TOOL_CALL' ? '判断下一步需要补充信息' : '判断证据是否足够'
+      add(`decision-${event.sequence}`, `第 ${payload.step || '?'} 次决策：${action}`, 'complete', payload.reasonSummary || payload.evidenceGap || '')
+    }
+    if (event.type === 'tool.requested') {
+      const id = String(payload.toolCallId || event.sequence)
+      const row = { key: `tool-${id}`, label: toolLabel(payload.tool || '未知工具'), status: 'running', detail: '正在调用工具并等待结果' }
+      toolRows.set(id, row)
+      timeline.push(row)
+    }
+    if (event.type === 'tool.completed') {
+      const id = String(payload.toolCallId || '')
+      const row = toolRows.get(id)
+      if (row) Object.assign(row, { status: 'complete', detail: `已生成 ${(payload.evidenceIds || []).length} 条证据` })
+      else add(`tool-complete-${event.sequence}`, toolLabel(payload.tool || '未知工具'))
+    }
+    if (event.type === 'run.synthesizing') add('synthesis', '整理证据并生成最终回答', 'running')
+    if (event.type === 'run.completed') add('synthesis', '整理证据并生成最终回答', 'complete')
+    if (event.type === 'run.failed') add('failed', 'Agent 执行终止', 'failed', payload.message || payload.errorCode || '')
+  })
+  return timeline
+}
+
+function delay(ms) {
+  return new Promise(resolve => window.setTimeout(resolve, ms))
+}
+
+function agentRunTitle(state) {
+  if (state === 'COMPLETE') return 'Agent 任务完成'
+  if (state === 'FAILED') return 'Agent 任务失败'
+  return 'Agent 正在执行'
+}
+
+function timelineStatusLabel(status) {
+  if (status === 'running') return '进行中'
+  if (status === 'failed') return '失败'
+  return '已完成'
 }
 
 function buildWorkspaceContext(items = []) {
@@ -1033,6 +1109,13 @@ function scrollToBottom() {
   letter-spacing: 0;
 }
 
+.empty-state > p {
+  max-width: 620px;
+  margin: 8px auto 20px;
+  color: #667085;
+  line-height: 1.65;
+}
+
 .suggestions {
   display: flex;
   flex-wrap: wrap;
@@ -1203,6 +1286,26 @@ function scrollToBottom() {
 .agent-step-list span,
 .agent-step-list small {
   display: block;
+}
+
+.agent-step-list li.agent-step--running {
+  border-color: #b8cef8;
+  background: #f5f8ff;
+}
+
+.agent-step-list li.agent-step--running small {
+  color: #3569c8;
+}
+
+.agent-step-list li.agent-step--failed small {
+  color: #d04438;
+}
+
+.agent-step-list p {
+  margin: 5px 0 0;
+  color: #667085;
+  font-size: 11px;
+  line-height: 1.45;
 }
 
 .agent-step-list span {

@@ -24,6 +24,12 @@ public class ToolRegistry {
 
     public AgentTool require(String name) {
         AgentTool tool = tools.get(name);
+        // Some function-calling models omit the version suffix even when the
+        // advertised function name is `name__v1`. Accept only the unambiguous
+        // v1 alias; policy checks still run against the canonical definition.
+        if (tool == null && name != null && !name.contains(".")) {
+            tool = tools.get(name + ".v1");
+        }
         if (tool == null) {
             throw new UnknownToolException(name);
         }

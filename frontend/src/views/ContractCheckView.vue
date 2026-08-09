@@ -122,7 +122,7 @@
         <div class="head-actions">
           <div class="head-actions__left">
             <button type="button" class="btn btn--agent" @click="continueInAgent">
-              在 Agent 对话中继续
+              在 AI 对话中继续
             </button>
             <button v-if="showFixAction" type="button" class="btn btn--ghost" @click="returnToContractLabFix">
               返回实验室

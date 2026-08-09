@@ -47,7 +47,7 @@ paths:
             schema: {$ref: '#/components/schemas/CreateRunRequest'}
       responses:
         '200':
-          description: Run accepted; Phase 1 mock completes synchronously
+          description: Run accepted immediately; poll the owned run to observe state and event progress
           content:
             application/json:
               schema: {$ref: '#/components/schemas/AgentRun'}
@@ -69,7 +69,7 @@ paths:
     get:
       operationId: streamAgentEvents
       tags: [Event]
-      description: Use authenticated fetch streaming. Last-Event-ID/cursor resume is reserved for the persistence implementation.
+      description: Authenticated snapshot of events after a sequence cursor. The current AI Chat uses bounded run polling for live progress.
       parameters:
         - $ref: '#/components/parameters/RunId'
         - name: after
@@ -189,7 +189,7 @@ components:
         answer: {type: [string, 'null']}
         errorCode:
           type: [string, 'null']
-          enum: [AGENT_DISABLED, UNAUTHORIZED, RUN_NOT_FOUND, RUN_NOT_OWNED, INVALID_STATE_TRANSITION, UNKNOWN_TOOL, INVALID_TOOL_ARGUMENTS, TOOL_TIMEOUT, TOOL_POLICY_DENIED, PROVIDER_ERROR, BUDGET_EXCEEDED, INTERNAL_ERROR, null]
+          enum: [AGENT_DISABLED, UNAUTHORIZED, RUN_NOT_FOUND, RUN_NOT_OWNED, INVALID_STATE_TRANSITION, UNKNOWN_TOOL, INVALID_TOOL_ARGUMENTS, TOOL_TIMEOUT, TOOL_POLICY_DENIED, PROVIDER_ERROR, LOOP_DETECTED, BUDGET_EXCEEDED, INTERNAL_ERROR, null]
         failureMessage: {type: [string, 'null']}
         steps: {type: integer, minimum: 0, maximum: 6}
         toolCalls: {type: integer, minimum: 0, maximum: 5}

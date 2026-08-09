@@ -6,6 +6,7 @@ import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.scse.cloudagent.config.AgentProperties;
 import org.scse.cloudagent.domain.AgentEvent;
+import org.scse.cloudagent.domain.AgentErrorCode;
 import org.scse.cloudagent.domain.AgentRun;
 import org.scse.cloudagent.domain.AgentRunState;
 import org.scse.cloudagent.domain.AgentSignal;
@@ -20,6 +21,8 @@ import org.scse.cloudagent.tool.AgentTool;
 import org.scse.cloudagent.tool.ToolInvocationValidator;
 import org.scse.cloudagent.tool.ToolRegistry;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.core.task.TaskExecutor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
@@ -44,6 +47,7 @@ public class InMemoryAgentRunService {
     private final AgentProperties properties;
     private final MiniAgentLoopEngine miniAgentLoopEngine;
     private final AgentRunArchive archive;
+    private final TaskExecutor taskExecutor;
     private final Counter createdCounter;
     private final Counter completedCounter;
 
@@ -54,6 +58,7 @@ public class InMemoryAgentRunService {
                                    AgentProperties properties,
                                    MiniAgentLoopEngine miniAgentLoopEngine,
                                    AgentRunArchive archive,
+                                   @Qualifier("agentTaskExecutor") TaskExecutor taskExecutor,
                                    MeterRegistry meterRegistry) {
         this.stateMachine = stateMachine;
         this.toolRegistry = toolRegistry;
@@ -62,6 +67,7 @@ public class InMemoryAgentRunService {
         this.properties = properties;
         this.miniAgentLoopEngine = miniAgentLoopEngine;
         this.archive = archive;
+        this.taskExecutor = taskExecutor;
         this.createdCounter = Counter.builder("agent.runs.created").register(meterRegistry);
         this.completedCounter = Counter.builder("agent.runs.completed").register(meterRegistry);
     }
@@ -99,14 +105,9 @@ public class InMemoryAgentRunService {
         createdCounter.increment();
         String mode = properties.miniLoop().enabled() ? "MINI_AGENTIC_RAG" : "MOCK";
         log.info("event=agent_run_created run_id={} user_id={} model={} mode={}", run.id, userId, run.model, mode);
-        if (properties.miniLoop().enabled()) {
-            executeMiniLoop(run, sanitizeWorkspaceContext(request.workspaceContext()));
-        } else {
-            executeMockLoop(run);
-        }
-        AgentRun snapshot = run.snapshot();
-        archive.saveRun(snapshot);
-        return snapshot;
+        Map<String, Object> workspaceContext = sanitizeWorkspaceContext(request.workspaceContext());
+        taskExecutor.execute(() -> executeRun(run, workspaceContext));
+        return run.snapshot();
     }
 
     public AgentRun getOwned(long userId, UUID runId) {
@@ -135,18 +136,31 @@ public class InMemoryAgentRunService {
                 run.id, run.userId, run.state, run.events.size(), run.evidence.size());
     }
 
+    private void executeRun(MutableRun run, Map<String, Object> workspaceContext) {
+        MDC.put("traceId", run.traceId);
+        try {
+            if (properties.miniLoop().enabled()) {
+                executeMiniLoop(run, workspaceContext);
+            } else {
+                executeMockLoop(run);
+            }
+        } catch (RuntimeException exception) {
+            log.error("event=agent_run_crashed run_id={} user_id={}", run.id, run.userId, exception);
+            run.fail(AgentErrorCode.INTERNAL_ERROR, "Agent execution failed: " + exception.getClass().getSimpleName());
+        } finally {
+            try {
+                archive.saveRun(run.snapshot());
+            } catch (RuntimeException exception) {
+                log.error("event=agent_run_archive_failed run_id={}", run.id, exception);
+            }
+            MDC.remove("traceId");
+        }
+    }
+
     private void executeMiniLoop(MutableRun run, Map<String, Object> workspaceContext) {
-        MiniLoopResult result = miniAgentLoopEngine.execute(run.id, run.userId, run.task, workspaceContext);
-        run.state = result.state();
-        run.answer = result.answer();
-        run.errorCode = result.errorCode();
-        run.failureMessage = result.failureMessage();
-        run.steps = result.steps();
-        run.toolCalls = result.toolCalls();
-        run.retrievalRounds = result.retrievalRounds();
-        run.events.addAll(result.events());
-        run.evidence.addAll(result.evidence());
-        run.updatedAt = Instant.now();
+        MiniLoopResult result = miniAgentLoopEngine.execute(
+                run.id, run.userId, run.task, workspaceContext, run::recordEvent);
+        run.finish(result);
         if (run.state == AgentRunState.COMPLETE) completedCounter.increment();
         log.info("event=agent_run_finished run_id={} user_id={} state={} error_code={} steps={} tool_calls={} retrieval_rounds={}",
                 run.id, run.userId, run.state, run.errorCode, run.steps, run.toolCalls, run.retrievalRounds);
@@ -198,10 +212,12 @@ public class InMemoryAgentRunService {
     }
 
     private void move(MutableRun run, AgentSignal signal, String type, Map<String, Object> data) {
-        run.state = stateMachine.transition(run.state, signal);
-        run.updatedAt = Instant.now();
-        run.events.add(new AgentEvent(run.events.size() + 1L, type, run.updatedAt,
-                Map.of("state", run.state.name(), "payload", data)));
+        synchronized (run) {
+            run.state = stateMachine.transition(run.state, signal);
+            run.updatedAt = Instant.now();
+            run.events.add(new AgentEvent(run.events.size() + 1L, type, run.updatedAt,
+                    Map.of("state", run.state.name(), "payload", data)));
+        }
     }
 
     private static final class MutableRun {
@@ -231,6 +247,55 @@ public class InMemoryAgentRunService {
             this.task = task;
             this.model = model;
             this.traceId = traceId;
+        }
+
+        private synchronized void recordEvent(AgentEvent event) {
+            events.add(event);
+            Object stateValue = event.data().get("state");
+            if (stateValue != null) state = AgentRunState.valueOf(String.valueOf(stateValue));
+            Map<?, ?> payload = event.data().get("payload") instanceof Map<?, ?> map ? map : Map.of();
+            if ("model.action".equals(event.type())) {
+                steps = Math.max(steps, integerValue(payload.get("step")));
+            } else if ("tool.requested".equals(event.type())) {
+                toolCalls++;
+                String tool = String.valueOf(payload.get("tool"));
+                if ("search_contracts.v1".equals(tool) || "retrieve_knowledge.v1".equals(tool)) retrievalRounds++;
+            }
+            updatedAt = event.createdAt();
+        }
+
+        private synchronized void finish(MiniLoopResult result) {
+            state = result.state();
+            answer = result.answer();
+            errorCode = result.errorCode();
+            failureMessage = result.failureMessage();
+            steps = result.steps();
+            toolCalls = result.toolCalls();
+            retrievalRounds = result.retrievalRounds();
+            evidence.clear();
+            evidence.addAll(result.evidence());
+            updatedAt = Instant.now();
+        }
+
+        private synchronized void fail(AgentErrorCode code, String message) {
+            if (!state.isTerminal()) {
+                state = AgentRunState.FAILED;
+                errorCode = code;
+                failureMessage = message;
+                updatedAt = Instant.now();
+                events.add(new AgentEvent(events.size() + 1L, "run.failed", updatedAt,
+                        Map.of("state", state.name(), "payload", Map.of(
+                                "errorCode", code.name(), "message", message))));
+            }
+        }
+
+        private int integerValue(Object value) {
+            if (value instanceof Number number) return number.intValue();
+            try {
+                return Integer.parseInt(String.valueOf(value));
+            } catch (RuntimeException ignored) {
+                return 0;
+            }
         }
 
         private synchronized AgentRun snapshot() {

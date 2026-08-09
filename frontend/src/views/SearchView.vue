@@ -78,7 +78,7 @@
           </div>
         </div>
         <button class="agent-search-btn" type="button" :disabled="!keyword.trim()" @click="sendSearchToAgent">
-          让 Agent 继续检索与验证
+          在 AI 对话中深入分析
         </button>
       </div>
     </section>

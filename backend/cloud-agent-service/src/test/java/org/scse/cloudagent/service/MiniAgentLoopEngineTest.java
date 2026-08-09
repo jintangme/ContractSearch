@@ -117,6 +117,20 @@ class MiniAgentLoopEngineTest {
         assertThat(requests.get(1).tools()).isEmpty();
     }
 
+    @Test
+    void publishesEventsWhileTheLoopIsRunning() {
+        List<String> published = new ArrayList<>();
+        StructuredActionProvider provider = request -> AgentDecision.abstain(
+                "No evidence available", List.of(), "stop", "missing evidence", "abstain");
+
+        MiniLoopResult result = engine(provider, new AgentProperties.MiniLoop(true, 2, 1, 1))
+                .execute(UUID.randomUUID(), 7, "unknown contract", Map.of(),
+                        event -> published.add(event.type()));
+
+        assertThat(published).containsExactly("run.plan", "model.action", "run.synthesizing", "run.completed");
+        assertThat(result.events()).extracting(event -> event.type()).containsExactlyElementsOf(published);
+    }
+
     private MiniAgentLoopEngine engine(StructuredActionProvider provider, AgentProperties.MiniLoop budget) {
         ToolRegistry registry = new ToolRegistry(List.of(
                 new StubTool("search_contracts.v1", SideEffect.READ),

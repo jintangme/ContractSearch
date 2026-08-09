@@ -63,7 +63,7 @@
                 AI 合约解读
               </button>
               <button class="action-btn action-btn--agent" @click="sendToAgent">
-                交给 Agent 验证
+                在 AI 对话中继续
               </button>
             </div>
           </section>

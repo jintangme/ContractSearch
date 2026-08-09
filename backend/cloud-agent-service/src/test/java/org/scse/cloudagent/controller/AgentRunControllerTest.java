@@ -8,6 +8,9 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
@@ -48,18 +51,37 @@ class AgentRunControllerTest {
                         .content("{\"task\":\"find a safe ERC20\"}"))
                 .andExpect(status().isOk())
                 .andExpect(header().string("X-Trace-Id", "phase1-test-trace"))
-                .andExpect(jsonPath("$.state").value("COMPLETE"))
                 .andExpect(jsonPath("$.model").value("glm-4.5-air"))
                 .andExpect(jsonPath("$.traceId").value("phase1-test-trace"))
-                .andExpect(jsonPath("$.events.length()").value(5))
-                .andExpect(jsonPath("$.evidence.length()").value(1))
-                .andExpect(jsonPath("$.proposals[0].status").value("PENDING"))
                 .andReturn().getResponse().getContentAsString();
 
-        String runId = new com.fasterxml.jackson.databind.ObjectMapper().readTree(body).get("id").asText();
+        String runId = new ObjectMapper().readTree(body).get("id").asText();
+        JsonNode completed = waitForTerminalRun(runId);
+        org.assertj.core.api.Assertions.assertThat(completed.path("state").asText()).isEqualTo("COMPLETE");
+        org.assertj.core.api.Assertions.assertThat(completed.path("events").size()).isEqualTo(5);
+        org.assertj.core.api.Assertions.assertThat(completed.path("evidence").size()).isEqualTo(1);
+        org.assertj.core.api.Assertions.assertThat(completed.at("/proposals/0/status").asText()).isEqualTo("PENDING");
+
         mockMvc.perform(get("/api/agent/v1/runs/{runId}", runId)
                         .header(AgentInternalAuthFilter.INTERNAL_TOKEN_HEADER, TOKEN)
                         .header("X-User-Id", "8"))
                 .andExpect(status().isNotFound());
+    }
+
+    private JsonNode waitForTerminalRun(String runId) throws Exception {
+        ObjectMapper mapper = new ObjectMapper();
+        for (int attempt = 0; attempt < 50; attempt++) {
+            String body = mockMvc.perform(get("/api/agent/v1/runs/{runId}", runId)
+                            .header(AgentInternalAuthFilter.INTERNAL_TOKEN_HEADER, TOKEN)
+                            .header("X-User-Id", "7"))
+                    .andExpect(status().isOk())
+                    .andReturn().getResponse().getContentAsString();
+            JsonNode run = mapper.readTree(body);
+            if ("COMPLETE".equals(run.path("state").asText()) || "FAILED".equals(run.path("state").asText())) {
+                return run;
+            }
+            Thread.sleep(10L);
+        }
+        throw new AssertionError("Agent run did not reach a terminal state");
     }
 }
