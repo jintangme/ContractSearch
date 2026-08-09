@@ -78,6 +78,7 @@ function renderMarkdown(markdown) {
   const lines = String(markdown ?? '').replace(/\r\n?/g, '\n').split('\n')
   const html = []
   let index = 0
+  let orderedListNext = 1
 
   while (index < lines.length) {
     const line = lines[index]
@@ -89,6 +90,7 @@ function renderMarkdown(markdown) {
     }
 
     if (/^```/.test(line)) {
+      orderedListNext = 1
       const lang = escapeAttr(line.replace(/^```/, '').trim())
       const codeLines = []
       index += 1
@@ -103,6 +105,7 @@ function renderMarkdown(markdown) {
 
     const headingMatch = line.match(/^(#{1,3})\s+(.+)$/)
     if (headingMatch) {
+      orderedListNext = 1
       const level = headingMatch[1].length
       html.push(`<h${level}>${renderInline(headingMatch[2].trim())}</h${level}>`)
       index += 1
@@ -110,6 +113,7 @@ function renderMarkdown(markdown) {
     }
 
     if (line.includes('|') && isTableDivider(nextLine)) {
+      orderedListNext = 1
       const tableLines = [line, nextLine]
       index += 2
       while (index < lines.length && lines[index].includes('|') && lines[index].trim()) {
@@ -132,11 +136,15 @@ function renderMarkdown(markdown) {
 
     if (/^\s*\d+\.\s+/.test(line)) {
       const items = []
+      const requestedStart = Number(line.match(/^\s*(\d+)\./)?.[1] || 1)
       while (index < lines.length && /^\s*\d+\.\s+/.test(lines[index])) {
         items.push(lines[index].replace(/^\s*\d+\.\s+/, ''))
         index += 1
       }
-      html.push(`<ol>${items.map(item => `<li>${renderInline(item)}</li>`).join('')}</ol>`)
+      const start = requestedStart === 1 && orderedListNext > 1 ? orderedListNext : requestedStart
+      const startAttr = start > 1 ? ` start="${start}"` : ''
+      html.push(`<ol${startAttr}>${items.map(item => `<li>${renderInline(item)}</li>`).join('')}</ol>`)
+      orderedListNext = start + items.length
       continue
     }
 

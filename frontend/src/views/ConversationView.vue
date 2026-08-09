@@ -162,7 +162,7 @@
             @click="loadSession(session.id)"
           >
             <div>
-              <strong>{{ session.title || '未命名对话' }}</strong>
+              <strong :title="session.title || '未命名对话'">{{ summarizeSessionTitle(session.title) }}</strong>
               <span>{{ formatTime(session.updatedAt) }}</span>
             </div>
             <button type="button" @click.stop="askDeleteSession(session)">删除</button>
@@ -398,7 +398,7 @@ async function sendAgentMessage({ text, assistantLocalId, workspaceContext }) {
   try {
     if (!currentAgentSessionId.value) {
       const session = await agentApi.createSession({
-        title: text.slice(0, 120),
+        title: summarizeSessionTitle(text),
         workspaceContext,
       })
       currentAgentSessionId.value = session?.id || null
@@ -740,6 +740,22 @@ function sourceTypeLabel(type) {
   return {
     contract: '合约库'
   }[type] || '附件'
+}
+
+function summarizeSessionTitle(value) {
+  const original = String(value || '')
+    .replace(/```[\s\S]*?```/g, '代码')
+    .replace(/[#*_`>\[\]()]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  if (!original) return '未命名对话'
+
+  const concise = original
+    .replace(/^(请问|请帮我|请你|帮我|我想知道|我想了解|我想确认|能不能|是否可以)\s*/u, '')
+    .split(/[。！？?!；;\n]/u)[0]
+    .trim() || original
+  const characters = Array.from(concise)
+  return characters.length > 18 ? `${characters.slice(0, 18).join('')}…` : concise
 }
 
 function formatTime(value) {
@@ -1474,6 +1490,11 @@ textarea:focus {
   cursor: pointer;
 }
 
+.session-item > div {
+  flex: 1;
+  min-width: 0;
+}
+
 .session-item:hover,
 .session-item.active {
   background: #f6f7f9;
@@ -1488,6 +1509,9 @@ textarea:focus {
   color: #111827;
   font-size: 14px;
   margin-bottom: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .session-item span {
@@ -1496,6 +1520,7 @@ textarea:focus {
 }
 
 .session-item button {
+  flex: 0 0 auto;
   height: 30px;
   padding: 0 9px;
   color: #667085;
