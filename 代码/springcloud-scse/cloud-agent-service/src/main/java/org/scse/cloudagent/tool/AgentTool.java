@@ -7,5 +7,11 @@ import java.util.Map;
 public interface AgentTool {
     ToolDefinition definition();
 
-    Map<String, Object> invoke(JsonNode arguments);
+    default Map<String, Object> invoke(JsonNode arguments) {
+        throw new UnsupportedOperationException("Context-aware execution is required for " + definition().name());
+    }
+
+    default ToolExecutionResult execute(JsonNode arguments, ToolExecutionContext context) {
+        return new ToolExecutionResult(invoke(arguments), java.util.List.of());
+    }
 }

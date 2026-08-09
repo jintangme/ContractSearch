@@ -28,6 +28,16 @@ agent:
     url: ${AGENT_DB_URL:}
     username: ${AGENT_DB_USERNAME:}
     password: ${AGENT_DB_PASSWORD:}
+  mini-loop:
+    enabled: ${AGENT_MINI_LOOP_ENABLED:false}
+    max-steps: ${AGENT_MAX_STEPS:6}
+    max-tool-calls: ${AGENT_MAX_TOOL_CALLS:4}
+    max-retrieval-rounds: ${AGENT_MAX_RETRIEVAL_ROUNDS:2}
+  dependencies:
+    contract-service-base-url: ${AGENT_CONTRACT_SERVICE_URL:http://127.0.0.1:18081}
+    runtime-base-url: ${AGENT_RUNTIME_SERVICE_URL:http://127.0.0.1:19090}
+    contract-timeout-ms: ${AGENT_CONTRACT_TIMEOUT_MS:15000}
+    compile-timeout-ms: ${AGENT_COMPILE_TIMEOUT_MS:45000}
 
 management:
   endpoints:

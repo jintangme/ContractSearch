@@ -72,8 +72,10 @@ public class ContractController {
     }
 
     @GetMapping("/{id}")
-    public ResponseResult<ContractDetailVo> getContractDetail(@PathVariable Long id) {
-        ContractDetailVo contract = searchService.getContractById(id);
+    public ResponseResult<ContractDetailVo> getContractDetail(
+            @PathVariable Long id,
+            @RequestParam(defaultValue = "true") boolean regenerateAbi) {
+        ContractDetailVo contract = searchService.getContractById(id, regenerateAbi);
         if (contract == null) {
             return ResponseResult.fail(HttpStatusEnum.NOT_FOUND.getCode(), "未找到该合约");
         }

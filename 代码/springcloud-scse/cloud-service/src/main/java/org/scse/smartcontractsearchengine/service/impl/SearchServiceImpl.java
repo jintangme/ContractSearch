@@ -154,6 +154,11 @@ public class SearchServiceImpl implements SearchService {
 
     @Override
     public ContractDetailVo getContractById(Long id) {
+        return getContractById(id, true);
+    }
+
+    @Override
+    public ContractDetailVo getContractById(Long id, boolean regenerateAbi) {
         SmartContract contract = smartContractMapper.selectById(id);
 
         if (contract == null) {
@@ -161,7 +166,9 @@ public class SearchServiceImpl implements SearchService {
             return null;
         }
 
-        regenerateAbiIfMissing(contract);
+        if (regenerateAbi) {
+            regenerateAbiIfMissing(contract);
+        }
 
         ContractDetailVo detail = new ContractDetailVo();
         BeanUtils.copyProperties(contract, detail);

@@ -19,6 +19,8 @@ public interface SearchService {
 
     ContractDetailVo getContractById(Long id);
 
+    ContractDetailVo getContractById(Long id, boolean regenerateAbi);
+
     List<Group> getGroupList();
 
     List<ContractCardVo> getContractsByGroup(Long groupId);

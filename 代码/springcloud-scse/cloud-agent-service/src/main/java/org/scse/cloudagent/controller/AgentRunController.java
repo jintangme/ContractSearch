@@ -51,7 +51,7 @@ public class AgentRunController {
     @PostMapping("/runs")
     public AgentRun createRun(@RequestHeader(USER_HEADER) long userId,
                               @Valid @RequestBody CreateRunRequest request) {
-        return runService.createMockRun(userId, request);
+        return runService.createRun(userId, request);
     }
 
     @GetMapping("/runs/{runId}")

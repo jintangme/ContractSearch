@@ -41,6 +41,7 @@ public class InMemoryAgentRunService {
     private final ToolInvocationValidator validator;
     private final ObjectMapper objectMapper;
     private final AgentProperties properties;
+    private final MiniAgentLoopEngine miniAgentLoopEngine;
     private final Counter createdCounter;
     private final Counter completedCounter;
 
@@ -49,12 +50,14 @@ public class InMemoryAgentRunService {
                                    ToolInvocationValidator validator,
                                    ObjectMapper objectMapper,
                                    AgentProperties properties,
+                                   MiniAgentLoopEngine miniAgentLoopEngine,
                                    MeterRegistry meterRegistry) {
         this.stateMachine = stateMachine;
         this.toolRegistry = toolRegistry;
         this.validator = validator;
         this.objectMapper = objectMapper;
         this.properties = properties;
+        this.miniAgentLoopEngine = miniAgentLoopEngine;
         this.createdCounter = Counter.builder("agent.runs.created").register(meterRegistry);
         this.completedCounter = Counter.builder("agent.runs.completed").register(meterRegistry);
     }
@@ -77,6 +80,10 @@ public class InMemoryAgentRunService {
     }
 
     public AgentRun createMockRun(long userId, CreateRunRequest request) {
+        return createRun(userId, request);
+    }
+
+    public AgentRun createRun(long userId, CreateRunRequest request) {
         UUID sessionId = request.sessionId();
         if (sessionId != null) {
             getSession(userId, sessionId);
@@ -85,8 +92,13 @@ public class InMemoryAgentRunService {
         MutableRun run = new MutableRun(UUID.randomUUID(), sessionId, userId, request.task(), properties.model(), traceId);
         runs.put(run.id, run);
         createdCounter.increment();
-        log.info("event=agent_run_created run_id={} user_id={} model={} mode=MOCK", run.id, userId, run.model);
-        executeMockLoop(run);
+        String mode = properties.miniLoop().enabled() ? "MINI_AGENTIC_RAG" : "MOCK";
+        log.info("event=agent_run_created run_id={} user_id={} model={} mode={}", run.id, userId, run.model, mode);
+        if (properties.miniLoop().enabled()) {
+            executeMiniLoop(run);
+        } else {
+            executeMockLoop(run);
+        }
         return run.snapshot();
     }
 
@@ -116,6 +128,23 @@ public class InMemoryAgentRunService {
                 run.id, run.userId, run.state, run.events.size(), run.evidence.size());
     }
 
+    private void executeMiniLoop(MutableRun run) {
+        MiniLoopResult result = miniAgentLoopEngine.execute(run.id, run.userId, run.task);
+        run.state = result.state();
+        run.answer = result.answer();
+        run.errorCode = result.errorCode();
+        run.failureMessage = result.failureMessage();
+        run.steps = result.steps();
+        run.toolCalls = result.toolCalls();
+        run.retrievalRounds = result.retrievalRounds();
+        run.events.addAll(result.events());
+        run.evidence.addAll(result.evidence());
+        run.updatedAt = Instant.now();
+        if (run.state == AgentRunState.COMPLETE) completedCounter.increment();
+        log.info("event=agent_run_finished run_id={} user_id={} state={} error_code={} steps={} tool_calls={} retrieval_rounds={}",
+                run.id, run.userId, run.state, run.errorCode, run.steps, run.toolCalls, run.retrievalRounds);
+    }
+
     private String toArguments(String task) {
         try {
             return objectMapper.writeValueAsString(Map.of("message", task));
@@ -140,6 +169,11 @@ public class InMemoryAgentRunService {
         private final String traceId;
         private AgentRunState state = AgentRunState.RECEIVED;
         private String answer;
+        private org.scse.cloudagent.domain.AgentErrorCode errorCode;
+        private String failureMessage;
+        private int steps;
+        private int toolCalls;
+        private int retrievalRounds;
         private final Instant createdAt = Instant.now();
         private Instant updatedAt = createdAt;
         private final List<AgentEvent> events = new ArrayList<>();
@@ -156,7 +190,8 @@ public class InMemoryAgentRunService {
         }
 
         private synchronized AgentRun snapshot() {
-            return new AgentRun(id, sessionId, userId, task, model, traceId, state, answer, createdAt, updatedAt,
+            return new AgentRun(id, sessionId, userId, task, model, traceId, state, answer,
+                    errorCode, failureMessage, steps, toolCalls, retrievalRounds, createdAt, updatedAt,
                     List.copyOf(events), List.copyOf(evidence), List.copyOf(proposals));
         }
     }

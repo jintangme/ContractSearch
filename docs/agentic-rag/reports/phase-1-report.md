@@ -7,7 +7,7 @@
 
 The Java-native Agent foundation is implemented and default-off. `cloud-agent-service` starts on port 18082, reports healthy, rejects direct untrusted Agent requests, and completes a deterministic mock Tool loop with ordered SSE, Evidence and a reviewable Proposal. Existing Chat, Search, Contract Lab and runtime behavior remain unchanged.
 
-Phase 1 cannot be marked `COMPLETE` yet because the current process has no `ZHIPU_API_KEY`. The live `glm-4.5-air` synchronous/streaming Tool Calling, thinking and invalid-parameter probe has therefore not been executed. A sanitized blocked report was generated instead; Phase 1A must not start until this probe is rerun with the key available to the Codex/terminal process.
+Phase 1 cannot be marked `COMPLETE` yet because the current Codex process has no `ZHIPU_API_KEY`. The key reported by the project owner is isolated in another terminal or IDE configuration and was not inherited by either Codex or the running `cloud-service`; no secret-recovery attempt was made. The live `glm-4.5-air` synchronous/streaming Tool Calling, thinking and invalid-parameter probe has therefore not been executed. On 2026-08-09 the owner explicitly accepted deferring this external environment check and authorized the Phase 1A implementation spike. Phase 1 remains `IN_PROGRESS` until the sanitized probe passes.
 
 ## Implemented scope
 

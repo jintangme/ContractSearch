@@ -1,0 +1,214 @@
+package org.scse.cloudagent.service;
+
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.scse.cloudagent.config.AgentProperties;
+import org.scse.cloudagent.domain.AgentErrorCode;
+import org.scse.cloudagent.domain.AgentEvent;
+import org.scse.cloudagent.domain.AgentRunState;
+import org.scse.cloudagent.domain.AgentSignal;
+import org.scse.cloudagent.domain.EvidenceItem;
+import org.scse.cloudagent.state.AgentStateMachine;
+import org.scse.cloudagent.tool.AgentTool;
+import org.scse.cloudagent.tool.AgentToolException;
+import org.scse.cloudagent.tool.EvidenceDraft;
+import org.scse.cloudagent.tool.InvalidToolArgumentsException;
+import org.scse.cloudagent.tool.MiniLoopToolPolicy;
+import org.scse.cloudagent.tool.ToolExecutionContext;
+import org.scse.cloudagent.tool.ToolExecutionResult;
+import org.scse.cloudagent.tool.ToolInvocationValidator;
+import org.scse.cloudagent.tool.ToolRegistry;
+import org.scse.cloudagent.tool.UnknownToolException;
+import org.springframework.stereotype.Component;
+
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+
+@Component
+public class MiniAgentLoopEngine {
+    private final AgentStateMachine stateMachine;
+    private final ToolRegistry toolRegistry;
+    private final ToolInvocationValidator validator;
+    private final MiniLoopToolPolicy policy;
+    private final StructuredActionProvider provider;
+    private final UntrustedContentBoundary contentBoundary;
+    private final ObjectMapper objectMapper;
+    private final AgentProperties properties;
+
+    public MiniAgentLoopEngine(AgentStateMachine stateMachine,
+                               ToolRegistry toolRegistry,
+                               ToolInvocationValidator validator,
+                               MiniLoopToolPolicy policy,
+                               StructuredActionProvider provider,
+                               UntrustedContentBoundary contentBoundary,
+                               ObjectMapper objectMapper,
+                               AgentProperties properties) {
+        this.stateMachine = stateMachine;
+        this.toolRegistry = toolRegistry;
+        this.validator = validator;
+        this.policy = policy;
+        this.provider = provider;
+        this.contentBoundary = contentBoundary;
+        this.objectMapper = objectMapper;
+        this.properties = properties;
+    }
+
+    public MiniLoopResult execute(UUID runId, long userId, String task) {
+        Context context = new Context();
+        move(context, AgentSignal.START_PLAN, "run.plan", Map.of("mode", "MINI_AGENTIC_RAG"));
+        try {
+            while (context.steps < properties.miniLoop().maxSteps()) {
+                context.steps++;
+                AgentDecision decision = provider.decide(new AgentDecisionRequest(
+                        task,
+                        context.observations,
+                        context.evidence,
+                        toolRegistry.definitions(MiniLoopToolPolicy.ALLOWED_TOOLS),
+                        context.steps,
+                        properties.miniLoop().maxToolCalls() - context.toolCalls,
+                        properties.miniLoop().maxRetrievalRounds() - context.retrievalRounds
+                ));
+                Map<String, Object> modelAction = new LinkedHashMap<>();
+                modelAction.put("step", context.steps);
+                modelAction.put("actionType", decision.type().name());
+                modelAction.put("rawStructuredOutput", decision.rawStructuredOutput());
+                modelAction.put("provider", decision.providerMetadata());
+                addEvent(context, "model.action", Map.copyOf(modelAction));
+                if (decision.type() == AgentDecision.Type.FINAL_ANSWER) {
+                    return complete(context, decision);
+                }
+                executeTool(context, runId, userId, decision);
+            }
+            return fail(context, AgentErrorCode.BUDGET_EXCEEDED, "Maximum Agent steps exceeded");
+        } catch (AgentToolException exception) {
+            return fail(context, exception.errorCode(), exception.getMessage());
+        } catch (UnknownToolException exception) {
+            return fail(context, AgentErrorCode.UNKNOWN_TOOL, exception.getMessage());
+        } catch (InvalidToolArgumentsException exception) {
+            return fail(context, AgentErrorCode.INVALID_TOOL_ARGUMENTS, exception.getMessage());
+        } catch (RuntimeException exception) {
+            return fail(context, AgentErrorCode.INTERNAL_ERROR, "Agent loop failed: " + exception.getClass().getSimpleName());
+        }
+    }
+
+    private void executeTool(Context context, UUID runId, long userId, AgentDecision decision) {
+        if (context.toolCalls >= properties.miniLoop().maxToolCalls()) {
+            throw new AgentToolException(AgentErrorCode.BUDGET_EXCEEDED, "Maximum tool calls exceeded");
+        }
+        AgentTool tool = toolRegistry.require(decision.toolName());
+        policy.authorize(tool);
+        boolean retrieval = "search_contracts.v1".equals(tool.definition().name());
+        if (retrieval && context.retrievalRounds >= properties.miniLoop().maxRetrievalRounds()) {
+            throw new AgentToolException(AgentErrorCode.BUDGET_EXCEEDED, "Maximum retrieval rounds exceeded");
+        }
+        JsonNode arguments = validator.parseObject(decision.argumentsJson());
+        UUID toolCallId = UUID.randomUUID();
+        AgentSignal signal = context.state == AgentRunState.PLAN ? AgentSignal.REQUEST_TOOL : AgentSignal.RETRY_TOOL;
+        move(context, signal, "tool.requested", Map.of(
+                "toolCallId", toolCallId,
+                "tool", tool.definition().name(),
+                "schemaVersion", tool.definition().name().substring(tool.definition().name().lastIndexOf('.') + 1),
+                "sideEffect", tool.definition().sideEffect().name(),
+                "arguments", arguments
+        ));
+        context.toolCalls++;
+        if (retrieval) context.retrievalRounds++;
+        ToolExecutionResult result = tool.execute(arguments, new ToolExecutionContext(userId, runId));
+        List<UUID> evidenceIds = addEvidence(context, result.evidence(), toolCallId);
+        Map<String, Object> observation = new LinkedHashMap<>(result.output());
+        observation.put("toolCallId", toolCallId.toString());
+        observation.put("evidenceIds", evidenceIds.stream().map(UUID::toString).toList());
+        context.observations.add(contentBoundary.wrap(tool.definition().name(), toJson(observation)));
+        move(context, AgentSignal.RECORD_OBSERVATION, "tool.completed", Map.of(
+                "toolCallId", toolCallId,
+                "tool", tool.definition().name(),
+                "evidenceIds", evidenceIds,
+                "outputKeys", new ArrayList<>(result.output().keySet())
+        ));
+    }
+
+    private MiniLoopResult complete(Context context, AgentDecision decision) {
+        Set<UUID> available = new LinkedHashSet<>();
+        context.evidence.forEach(item -> available.add(item.id()));
+        if (decision.evidenceIds().isEmpty()) {
+            throw new AgentToolException(AgentErrorCode.PROVIDER_ERROR,
+                    "Final answer must cite at least one evidence ID");
+        }
+        if (!available.containsAll(decision.evidenceIds())) {
+            throw new AgentToolException(AgentErrorCode.PROVIDER_ERROR,
+                    "Final answer cited an unknown evidence ID");
+        }
+        move(context, AgentSignal.START_SYNTHESIS, "run.synthesizing",
+                Map.of("evidenceIds", decision.evidenceIds()));
+        context.answer = decision.answer() + "\n\nEvidence: "
+                + decision.evidenceIds().stream().map(id -> "[" + id + "]").reduce((a, b) -> a + " " + b).orElse("");
+        move(context, AgentSignal.COMPLETE, "run.completed", Map.of(
+                "answer", context.answer,
+                "steps", context.steps,
+                "toolCalls", context.toolCalls,
+                "retrievalRounds", context.retrievalRounds
+        ));
+        return result(context, null, null);
+    }
+
+    private List<UUID> addEvidence(Context context, List<EvidenceDraft> drafts, UUID toolCallId) {
+        List<UUID> ids = new ArrayList<>();
+        for (EvidenceDraft draft : drafts) {
+            UUID id = UUID.randomUUID();
+            Map<String, Object> metadata = new LinkedHashMap<>(draft.metadata());
+            metadata.put("toolCallId", toolCallId.toString());
+            context.evidence.add(new EvidenceItem(id, draft.sourceType(), draft.sourceRef(), draft.title(),
+                    draft.excerpt(), draft.trustLevel(), Map.copyOf(metadata)));
+            ids.add(id);
+        }
+        return List.copyOf(ids);
+    }
+
+    private MiniLoopResult fail(Context context, AgentErrorCode code, String message) {
+        if (!context.state.isTerminal()) {
+            move(context, AgentSignal.FAIL, "run.failed", Map.of("errorCode", code.name(), "message", message));
+        }
+        return result(context, code, message);
+    }
+
+    private MiniLoopResult result(Context context, AgentErrorCode code, String message) {
+        return new MiniLoopResult(context.state, context.answer, code, message, context.steps, context.toolCalls,
+                context.retrievalRounds, List.copyOf(context.events), List.copyOf(context.evidence));
+    }
+
+    private void move(Context context, AgentSignal signal, String type, Map<String, Object> data) {
+        context.state = stateMachine.transition(context.state, signal);
+        addEvent(context, type, data);
+    }
+
+    private void addEvent(Context context, String type, Map<String, Object> data) {
+        context.events.add(new AgentEvent(context.events.size() + 1L, type, Instant.now(),
+                Map.of("state", context.state.name(), "payload", data)));
+    }
+
+    private String toJson(Object value) {
+        try {
+            return objectMapper.writeValueAsString(value);
+        } catch (JsonProcessingException exception) {
+            throw new AgentToolException(AgentErrorCode.INTERNAL_ERROR, "Unable to serialize tool observation", exception);
+        }
+    }
+
+    private static final class Context {
+        private AgentRunState state = AgentRunState.RECEIVED;
+        private String answer;
+        private int steps;
+        private int toolCalls;
+        private int retrievalRounds;
+        private final List<AgentEvent> events = new ArrayList<>();
+        private final List<EvidenceItem> evidence = new ArrayList<>();
+        private final List<String> observations = new ArrayList<>();
+    }
+}
