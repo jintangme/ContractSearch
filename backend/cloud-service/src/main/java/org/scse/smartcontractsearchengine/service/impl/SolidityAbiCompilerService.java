@@ -282,10 +282,9 @@ public class SolidityAbiCompilerService {
             Path current = start;
             for (int i = 0; i < 8 && current != null; i += 1) {
                 List<Path> candidates = List.of(
-                        current.resolve("scse_front_end/node_modules/solc/solc.js"),
-                        current.resolve("代码/scse_front_end/node_modules/solc/solc.js"),
-                        current.resolve("../scse_front_end/node_modules/solc/solc.js"),
-                        current.resolve("../../scse_front_end/node_modules/solc/solc.js")
+                        current.resolve("frontend/node_modules/solc/solc.js"),
+                        current.resolve("../frontend/node_modules/solc/solc.js"),
+                        current.resolve("../../frontend/node_modules/solc/solc.js")
                 );
                 for (Path candidate : candidates) {
                     Path normalized = candidate.toAbsolutePath().normalize();

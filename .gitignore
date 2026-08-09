@@ -19,7 +19,7 @@
 # Java
 **/target/
 *.log
-代码/springcloud-scse/cloud-service/data/
+backend/cloud-service/data/
 
 # Node / frontend
 **/node_modules/
@@ -32,12 +32,12 @@
 **/.pytest_cache/
 **/.venv/
 **/venv/
-代码/scse-discover/data/
-代码/scse-discover/nacos-data/
-代码/scse-discover/*.parquet
+scse-discover/data/
+scse-discover/nacos-data/
+scse-discover/*.parquet
 
-# Local database dump is 100+ MB and cannot be pushed to common Git hosts.
-代码/pg18.sql
+# Local database seed/dumps are 100+ MB and cannot be pushed to common Git hosts.
+database/*.sql
 backups/*.dump
 
 # Lean build/cache

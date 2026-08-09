@@ -25,9 +25,9 @@ The repository, running local services, live database, OpenAPI surface, model pa
 - `docs/agentic-rag/eval/phase0-search-baseline.json`
 - `scripts/agentic-rag/run-phase0-search-baseline.mjs`
 - `.gitignore`
-- `代码/scse-discover/app/main.py`
-- `代码/scse-discover/app/services/task_service.py`
-- `代码/scse-discover/tests/test_secret_config.py`
+- `scse-discover/app/main.py`
+- `scse-discover/app/services/task_service.py`
+- `scse-discover/tests/test_secret_config.py`
 - discovery config/examples/docs and Python requirements
 
 ## Dynamic verification results

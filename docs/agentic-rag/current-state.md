@@ -1,21 +1,22 @@
 # ContractSearch Current State
 
 > Baseline date: 2026-08-09 (Asia/Shanghai)  
-> Scope: Phase 0, read-only repository and local runtime audit
+> Scope: Phase 0 baseline, updated after the 2026-08-09 root-layout cleanup
 
 ## Repository boundary
 
-The effective project root is `计算机设计大赛2.0/`, because the Java/Vue applications live under `代码/` while the Solidity and Lean runtimes are sibling directories.
+The Git and application root is `计算机设计大赛2.0/`. All runnable components now live directly below this root.
 
 ```text
 计算机设计大赛2.0/
-├── 代码/
-│   ├── springcloud-scse/       Java 17 Maven reactor
-│   ├── scse_front_end/         Vue 3 + Vite
-│   ├── scse-discover/          Python/FastAPI import utility
-│   └── pg18.sql                database dump baseline
+├── backend/                       Java 17 Maven reactor
+├── frontend/                      Vue 3 + Vite
+├── scse-discover/                 Python/FastAPI import utility
 ├── contract-runtime-service/   Node/Express Solidity runtime
 ├── lean-runtime-service/       Node/Express Lean checker
+├── database/                   local ignored database seed
+├── docs/                       architecture and runbooks
+├── scripts/                    controlled project scripts
 └── plan.md
 ```
 
