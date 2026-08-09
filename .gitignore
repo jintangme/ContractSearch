@@ -38,6 +38,7 @@
 
 # Local database dump is 100+ MB and cannot be pushed to common Git hosts.
 代码/pg18.sql
+backups/*.dump
 
 # Lean build/cache
 **/.lake/

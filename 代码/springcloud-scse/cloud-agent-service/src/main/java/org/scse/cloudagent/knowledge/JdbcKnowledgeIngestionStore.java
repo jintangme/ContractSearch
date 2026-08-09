@@ -113,7 +113,7 @@ public class JdbcKnowledgeIngestionStore implements KnowledgeIngestionStore {
     public KnowledgeValidationResult validateCorpus() {
         try (Connection connection = connection()) {
             UUID corpusId = findCorpus(connection);
-            if (corpusId == null) return new KnowledgeValidationResult(0, 0, 0, 0, 0, 0);
+            if (corpusId == null) return new KnowledgeValidationResult(0, 0, 0, 0, 0, 0, 0, 0);
             long sources = scalar(connection,
                     "SELECT count(*) FROM knowledge_source WHERE corpus_version_id = ?", corpusId);
             long documents = scalar(connection, """
@@ -127,6 +127,9 @@ public class JdbcKnowledgeIngestionStore implements KnowledgeIngestionStore {
                     JOIN knowledge_source s ON s.id = d.source_id
                     WHERE s.corpus_version_id = ?
                     """, corpusId);
+            long searchRows = scalar(connection, """
+                    SELECT count(*) FROM knowledge_chunk_search WHERE corpus_version_id = ?
+                    """, corpusId);
             long orphanDocuments = scalar(connection, """
                     SELECT count(*) FROM knowledge_document d
                     LEFT JOIN knowledge_source s ON s.id = d.source_id
@@ -137,6 +140,13 @@ public class JdbcKnowledgeIngestionStore implements KnowledgeIngestionStore {
                     LEFT JOIN knowledge_document d ON d.id = c.document_id
                     WHERE d.id IS NULL
                     """, null);
+            long missingChunkSearchRows = scalar(connection, """
+                    SELECT count(*) FROM knowledge_chunk c
+                    JOIN knowledge_document d ON d.id = c.document_id
+                    JOIN knowledge_source s ON s.id = d.source_id
+                    LEFT JOIN knowledge_chunk_search ks ON ks.chunk_id = c.id
+                    WHERE s.corpus_version_id = ? AND ks.chunk_id IS NULL
+                    """, corpusId);
             long duplicates = scalar(connection, """
                     SELECT count(*) FROM (
                       SELECT normalized_hash FROM knowledge_source
@@ -144,8 +154,8 @@ public class JdbcKnowledgeIngestionStore implements KnowledgeIngestionStore {
                       GROUP BY normalized_hash HAVING count(*) > 1
                     ) duplicate_hashes
                     """, corpusId);
-            return new KnowledgeValidationResult(sources, documents, chunks,
-                    orphanDocuments, orphanChunks, duplicates);
+            return new KnowledgeValidationResult(sources, documents, chunks, searchRows,
+                    orphanDocuments, orphanChunks, missingChunkSearchRows, duplicates);
         } catch (SQLException exception) {
             throw new KnowledgeStoreException("Unable to validate Knowledge corpus", exception);
         }
@@ -176,7 +186,7 @@ public class JdbcKnowledgeIngestionStore implements KnowledgeIngestionStore {
                 documents += insertDocument(connection, documentId, sourceId, file, manifest);
                 for (KnowledgeChunk chunk : planned.plan().chunks()) {
                     if (!file.path().equals(chunk.filePath())) continue;
-                    chunks += insertChunk(connection, documentId, chunk);
+                    chunks += insertChunk(connection, corpusId, planned.source().id(), documentId, chunk);
                 }
             }
         }
@@ -341,7 +351,8 @@ public class JdbcKnowledgeIngestionStore implements KnowledgeIngestionStore {
         }
     }
 
-    private int insertChunk(Connection connection, UUID documentId, KnowledgeChunk chunk) throws SQLException {
+    private int insertChunk(Connection connection, UUID corpusId, long contractId,
+                            UUID documentId, KnowledgeChunk chunk) throws SQLException {
         UUID chunkId = deterministicId("chunk", documentId + ":" + chunk.ordinal()
                 + ":" + chunk.contentHash());
         try (PreparedStatement statement = connection.prepareStatement("""
@@ -365,7 +376,29 @@ public class JdbcKnowledgeIngestionStore implements KnowledgeIngestionStore {
             statement.setString(12, chunk.content());
             statement.setString(13, chunk.contentHash());
             statement.setString(14, json(chunk.metadata()));
-            return statement.executeUpdate();
+            int inserted = statement.executeUpdate();
+            insertChunkSearch(connection, chunkId, corpusId, contractId, chunk);
+            return inserted;
+        }
+    }
+
+    private void insertChunkSearch(Connection connection, UUID chunkId, UUID corpusId,
+                                   long contractId, KnowledgeChunk chunk) throws SQLException {
+        String searchText = String.join("\n",
+                chunk.symbolName() == null ? "" : chunk.symbolName(),
+                chunk.signature() == null ? "" : chunk.signature(),
+                chunk.content());
+        try (PreparedStatement statement = connection.prepareStatement("""
+                INSERT INTO knowledge_chunk_search(
+                  chunk_id, corpus_version_id, existing_contract_id, search_text)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT (chunk_id) DO NOTHING
+                """)) {
+            statement.setObject(1, chunkId);
+            statement.setObject(2, corpusId);
+            statement.setLong(3, contractId);
+            statement.setString(4, searchText);
+            statement.executeUpdate();
         }
     }
 

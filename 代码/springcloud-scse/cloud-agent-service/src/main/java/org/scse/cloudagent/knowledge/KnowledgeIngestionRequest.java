@@ -14,7 +14,9 @@ public record KnowledgeIngestionRequest(
 ) {
     public KnowledgeIngestionRequest {
         mode = mode == null ? KnowledgeIngestionMode.DRY_RUN : mode;
-        afterId = afterId != null && afterId < 0 ? 0L : afterId;
+        if (afterId != null && afterId < 0) {
+            afterId = 0L;
+        }
         limit = limit == null ? 10 : limit;
         useAst = useAst == null || useAst;
     }

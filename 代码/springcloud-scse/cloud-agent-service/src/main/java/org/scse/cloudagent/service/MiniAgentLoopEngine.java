@@ -70,7 +70,7 @@ public class MiniAgentLoopEngine {
                         task,
                         context.observations,
                         context.evidence,
-                        toolRegistry.definitions(MiniLoopToolPolicy.ALLOWED_TOOLS),
+                        toolRegistry.availableDefinitions(MiniLoopToolPolicy.ALLOWED_TOOLS),
                         context.steps,
                         properties.miniLoop().maxToolCalls() - context.toolCalls,
                         properties.miniLoop().maxRetrievalRounds() - context.retrievalRounds
@@ -104,7 +104,8 @@ public class MiniAgentLoopEngine {
         }
         AgentTool tool = toolRegistry.require(decision.toolName());
         policy.authorize(tool);
-        boolean retrieval = "search_contracts.v1".equals(tool.definition().name());
+        boolean retrieval = "search_contracts.v1".equals(tool.definition().name())
+                || "retrieve_knowledge.v1".equals(tool.definition().name());
         if (retrieval && context.retrievalRounds >= properties.miniLoop().maxRetrievalRounds()) {
             throw new AgentToolException(AgentErrorCode.BUDGET_EXCEEDED, "Maximum retrieval rounds exceeded");
         }

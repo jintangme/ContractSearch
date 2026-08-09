@@ -37,4 +37,9 @@ public class ToolRegistry {
     public List<ToolDefinition> definitions(Collection<String> names) {
         return names.stream().sorted().map(this::require).map(AgentTool::definition).toList();
     }
+
+    public List<ToolDefinition> availableDefinitions(Collection<String> names) {
+        return names.stream().sorted().filter(tools::containsKey)
+                .map(tools::get).map(AgentTool::definition).toList();
+    }
 }

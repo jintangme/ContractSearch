@@ -55,4 +55,17 @@ class MigrationContractTest {
             assertThat(sql).doesNotContain("alter table");
         }
     }
+
+    @Test
+    void fourthMigrationAddsAnAdditiveChunkTextIndex() throws IOException {
+        try (var input = getClass().getResourceAsStream("/db/migration/V4__knowledge_chunk_search.sql")) {
+            assertThat(input).isNotNull();
+            String sql = new String(input.readAllBytes(), StandardCharsets.UTF_8).toLowerCase();
+            assertThat(sql).contains("create table if not exists knowledge_chunk_search");
+            assertThat(sql).contains("tsvector generated always");
+            assertThat(sql).contains("using gin(search_vector)");
+            assertThat(sql).doesNotContain("drop table");
+            assertThat(sql).doesNotContain("alter table");
+        }
+    }
 }

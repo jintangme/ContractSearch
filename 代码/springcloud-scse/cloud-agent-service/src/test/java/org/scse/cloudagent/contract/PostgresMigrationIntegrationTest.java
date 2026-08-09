@@ -113,6 +113,8 @@ class PostgresMigrationIntegrationTest {
         assertThat(validation.sources()).isEqualTo(1);
         assertThat(validation.documents()).isEqualTo(1);
         assertThat(validation.chunks()).isEqualTo(1);
+        assertThat(validation.searchRows()).isEqualTo(1);
+        assertThat(validation.missingChunkSearchRows()).isZero();
         assertThat(validation.valid()).isTrue();
 
         String changed = source.replace("return 1", "return 2");
