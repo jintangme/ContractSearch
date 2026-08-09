@@ -71,6 +71,27 @@ class MiniAgentLoopEngineTest {
     }
 
     @Test
+    void recoversOnceFromDuplicateToolCallAndUsesExistingEvidence() {
+        StructuredActionProvider provider = request -> {
+            if (request.observations().isEmpty()) {
+                return AgentDecision.toolCall("retrieve_knowledge.v1", "{\"query\":\"smart contract\"}", "retrieve");
+            }
+            if (request.observations().stream().noneMatch(item -> item.contains("DUPLICATE_SKIPPED"))) {
+                return AgentDecision.toolCall("retrieve_knowledge.v1", "{\"query\":\"smart contract\"}", "repeat");
+            }
+            return AgentDecision.finalAnswer("A smart contract is executable blockchain code.",
+                    request.evidence().stream().map(item -> item.id()).toList(), "answer with existing evidence");
+        };
+
+        MiniLoopResult result = engine(provider, new AgentProperties.MiniLoop(true, 4, 2, 2))
+                .execute(UUID.randomUUID(), 7, "What is a smart contract?");
+
+        assertThat(result.state()).isEqualTo(AgentRunState.COMPLETE);
+        assertThat(result.toolCalls()).isEqualTo(1);
+        assertThat(result.events()).anyMatch(event -> "tool.skipped".equals(event.type()));
+    }
+
+    @Test
     void allowsExplicitAbstentionWhenNoEvidenceCanBeObtained() {
         StructuredActionProvider provider = request -> AgentDecision.abstain(
                 "I cannot verify this claim with the available tools.", List.of(),

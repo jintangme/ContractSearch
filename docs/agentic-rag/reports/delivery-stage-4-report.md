@@ -16,13 +16,16 @@
   - Mini Agent Loop 在每个状态变化时发布 `AgentEvent`，运行中的 `GET /runs/{id}` 可看到新增事件及动态计数。
   - 终态统一写入 archive；异步崩溃转换为可见的 `FAILED / INTERNAL_ERROR`。
   - 增加安全的 Tool alias：模型返回 `retrieve_knowledge` 等无版本名时，仅可解析到已注册的同名 `.v1` Tool，之后仍使用 canonical definition 做 Tool Policy 校验。未知名称继续拒绝。
+  - 重复 Tool 调用第一次不再直接终止 Run：跳过重复执行、保留已有 Evidence，并给模型一次使用现有资料完成回答的修正机会；连续再次重复才触发 `LOOP_DETECTED`。
+  - Supervisor Prompt 更新为 `delivery-stage4-workspace-v2`：通用知识问题优先检索一次权威知识后回答，不主动读取目录合约；只有实现、源码、比较、编译或安全问题才进入合约工具链。
 - `frontend`
   - 移除 Agent/普通对话开关、模型选择器和普通对话 fallback；所有正常提问统一进入 Agent Run。
   - 创建 Run 后持续轮询，不再等待整个多轮模型/工具链完成才一次性显示结果。
   - 移除任务卡片，改为类似 Codex 的无边框逐行 Activity Stream。
   - 底层事件映射为“正在检索知识库、正在搜索合约库、正在读取合约源码、正在检查编译结果、正在检查安全风险、正在整理资料”等用户语言。
   - 隐藏 model action、decision summary、Tool 技术名、steps/toolCalls/retrievalRounds 和模型名称。
-  - 最终答案后提供“查看参考来源”，展示来源摘要和中文 Trust Level。
+  - 最终答案后提供精简“参考来源”：按来源类型和标题去重、按可信度排序、默认最多显示 5 项；只有用户展开单个来源时才显示摘要、合并依据数和原始引用。
+  - 失败消息映射为用户可理解的中文提示，不再暴露 `get_contract.v1` 等内部 Tool 名或英文异常。
   - 详情、搜索、预审入口统一弱化为“在 AI 对话中继续/深入分析”。
 - Contract test 的目录定位同步到整理后的 `backend/`、`frontend/` 项目结构。
 
@@ -30,7 +33,7 @@
 
 - `cloud-agent-service`：52 tests，0 failures，2 个需真实外部环境的 integration tests skipped。
 - Tool alias 单测确认 `mock_echo` 只能解析到已注册 `mock_echo.v1`，随机未知 Tool 仍失败。
-- Agent Loop event sink 单测确认事件按 `plan → decision → synthesis → complete` 顺序发布。
+- Agent Loop 单测确认重复调用可跳过并使用已有 Evidence 完成回答；连续重复仍会安全终止。
 - 前端 production build：809 modules transformed，构建成功。
 - 本检查未调用 GLM，不增加模型费用。
 

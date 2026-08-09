@@ -142,6 +142,21 @@ public class MiniAgentLoopEngine {
         JsonNode arguments = validator.parseObject(decision.argumentsJson());
         String invocationKey = tool.definition().name() + ":" + arguments.toString();
         if (!context.invocations.add(invocationKey)) {
+            if (context.duplicateRecoveries == 0 && !context.evidence.isEmpty()) {
+                context.duplicateRecoveries++;
+                context.steps = Math.max(0, context.steps - 1);
+                context.observations.add(contentBoundary.wrap("loop_guard", toJson(Map.of(
+                        "status", "DUPLICATE_SKIPPED",
+                        "tool", tool.definition().name(),
+                        "instruction", "Use the existing observation and evidence. Choose a different useful tool or answer now."
+                ))));
+                addEvent(context, "tool.skipped", Map.of(
+                        "tool", tool.definition().name(),
+                        "reason", "DUPLICATE_INVOCATION",
+                        "recovery", "REUSE_EXISTING_EVIDENCE"
+                ));
+                return;
+            }
             throw new AgentToolException(AgentErrorCode.LOOP_DETECTED,
                     "Repeated identical tool invocation was blocked: " + tool.definition().name());
         }
@@ -254,6 +269,7 @@ public class MiniAgentLoopEngine {
         private int steps;
         private int toolCalls;
         private int retrievalRounds;
+        private int duplicateRecoveries;
         private final List<AgentEvent> events = new ArrayList<>();
         private final List<EvidenceItem> evidence = new ArrayList<>();
         private final List<String> observations = new ArrayList<>();

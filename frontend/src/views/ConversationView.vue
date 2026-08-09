@@ -45,15 +45,27 @@
             <p v-if="message.role !== 'assistant'" class="message-content">{{ message.content }}</p>
             <section v-if="message.agentRun?.evidence?.length && !message.loading" class="answer-sources">
               <details>
-                <summary>查看参考来源（{{ message.agentRun.evidence.length }}）</summary>
-                <article v-for="item in message.agentRun.evidence" :key="item.id">
-                  <div>
-                    <strong>{{ item.title || item.sourceType }}</strong>
-                    <span :class="`trust-badge trust-badge--${String(item.trustLevel || '').toLowerCase()}`">{{ trustLevelLabel(item.trustLevel) }}</span>
-                  </div>
-                  <p>{{ item.excerpt || item.sourceRef }}</p>
-                  <small>{{ item.sourceRef }}</small>
-                </article>
+                <summary>
+                  <span>参考来源</span>
+                  <small>{{ message.agentRun.evidenceTotal }}</small>
+                </summary>
+                <div class="source-list">
+                  <details v-for="(item, index) in message.agentRun.evidence" :key="item.id" class="source-item">
+                    <summary>
+                      <i>{{ index + 1 }}</i>
+                      <strong>{{ item.title || item.sourceType }}</strong>
+                      <span :class="`trust-badge trust-badge--${String(item.trustLevel || '').toLowerCase()}`">{{ trustLevelLabel(item.trustLevel) }}</span>
+                    </summary>
+                    <div class="source-detail">
+                      <p>{{ item.excerpt || '暂无摘要' }}</p>
+                      <small v-if="item.relatedCount > 1">已合并 {{ item.relatedCount }} 条相关依据</small>
+                      <small>{{ item.sourceRef }}</small>
+                    </div>
+                  </details>
+                  <p v-if="message.agentRun.hiddenEvidenceCount" class="source-more">
+                    另有 {{ message.agentRun.hiddenEvidenceCount }} 个来源已收起
+                  </p>
+                </div>
               </details>
             </section>
             <div v-if="message.attachments?.length" class="message-attachments">
@@ -389,7 +401,7 @@ async function sendAgentMessage({ text, assistantLocalId, workspaceContext }) {
       role: 'assistant',
       content: completed
         ? (run?.answer || '分析已完成，但暂时没有可展示的答案。')
-        : `本次分析未能完成：${run?.failureMessage || run?.errorCode || '未知错误'}`,
+        : friendlyRunFailure(run),
       createdAt: run?.updatedAt || new Date().toISOString(),
       attachments: [],
       agentRun,
@@ -416,6 +428,7 @@ async function sendAgentMessage({ text, assistantLocalId, workspaceContext }) {
 
 function summarizeAgentRun(run = {}) {
   const events = Array.isArray(run.events) ? run.events : []
+  const evidenceSummary = summarizeEvidence(run.evidence)
   return {
     id: run.id,
     state: run.state || 'FAILED',
@@ -426,13 +439,36 @@ function summarizeAgentRun(run = {}) {
     toolCalls: Number(run.toolCalls || 0),
     retrievalRounds: Number(run.retrievalRounds || 0),
     timeline: buildAgentTimeline(events, run.state),
-    evidence: Array.isArray(run.evidence)
-      ? run.evidence.slice(0, 20).map(item => ({
-          ...item,
-          excerpt: String(item.excerpt || '').slice(0, 900),
-        }))
-      : [],
+    evidence: evidenceSummary.items,
+    evidenceTotal: evidenceSummary.total,
+    hiddenEvidenceCount: evidenceSummary.hidden,
   }
+}
+
+function summarizeEvidence(rawEvidence) {
+  const trustPriority = { VERIFIED: 0, AUTHORITATIVE: 1, CURATED: 2, TOOL_GENERATED: 3, COMMUNITY: 4, USER_PROVIDED: 5, UNTRUSTED: 6 }
+  const grouped = new Map()
+  const evidence = Array.isArray(rawEvidence) ? rawEvidence : []
+  evidence.forEach(item => {
+    const title = String(item?.title || item?.sourceType || '参考资料').trim()
+    const key = `${item?.sourceType || ''}:${title}`
+    const existing = grouped.get(key)
+    if (existing) {
+      existing.relatedCount += 1
+      return
+    }
+    grouped.set(key, {
+      ...item,
+      title,
+      excerpt: String(item?.excerpt || '').replace(/\s+/g, ' ').trim().slice(0, 360),
+      sourceRef: String(item?.sourceRef || ''),
+      relatedCount: 1,
+    })
+  })
+  const unique = [...grouped.values()].sort((a, b) =>
+    (trustPriority[a.trustLevel] ?? 9) - (trustPriority[b.trustLevel] ?? 9))
+  const items = unique.slice(0, 5)
+  return { items, total: unique.length, hidden: Math.max(0, unique.length - items.length) }
 }
 
 async function waitForAgentRun(runId, assistantLocalId) {
@@ -473,9 +509,12 @@ function buildAgentTimeline(events = [], runState = 'RECEIVED') {
     if (event.type === 'run.plan') add('plan', '已理解问题，正在查找相关信息')
     if (event.type === 'tool.requested') {
       const id = String(payload.toolCallId || event.sequence)
-      const row = { key: `tool-${id}`, label: toolActivityLabel(payload.tool, false), status: 'running' }
+      const key = `tool-${String(payload.tool || 'other').replace(/\.v\d+$/, '')}`
+      const row = timeline.find(item => item.key === key)
+        || { key, label: toolActivityLabel(payload.tool, false), status: 'running' }
+      Object.assign(row, { label: toolActivityLabel(payload.tool, false), status: 'running' })
       toolRows.set(id, row)
-      timeline.push(row)
+      if (!timeline.includes(row)) timeline.push(row)
     }
     if (event.type === 'tool.completed') {
       const id = String(payload.toolCallId || '')
@@ -509,6 +548,16 @@ function friendlyAgentError(error) {
   if (text.includes('404') || text.includes('AGENT_DISABLED')) return '智能问答服务尚未启用'
   if (text.includes('timeout') || text.includes('超时')) return '处理超时，请稍后重试'
   return '请检查智能问答服务是否正常运行'
+}
+
+function friendlyRunFailure(run = {}) {
+  return {
+    LOOP_DETECTED: '资料已经找到，但整理过程出现了重复。请重新发送一次问题。',
+    BUDGET_EXCEEDED: '问题涉及的范围较广，本次未能在限定时间内完成。请缩小范围后重试。',
+    PROVIDER_ERROR: '回答生成暂时出现问题，请稍后重试。',
+    TOOL_TIMEOUT: '检查相关资料时响应超时，请稍后重试。',
+    UNKNOWN_TOOL: '当前无法完成所需的检查，请稍后重试。',
+  }[run?.errorCode] || '本次未能完成回答，请稍后重试。'
 }
 
 function toolActivityLabel(tool, completed) {
@@ -975,44 +1024,101 @@ function scrollToBottom() {
   border-top: 1px solid #eef1f5;
 }
 
-.answer-sources summary {
+.answer-sources > details > summary {
+  width: fit-content;
+  display: flex;
+  align-items: center;
+  gap: 7px;
   color: #475467;
   font-size: 12px;
-  font-weight: 750;
+  font-weight: 700;
   cursor: pointer;
 }
 
-.answer-sources article {
-  margin-top: 8px;
-  padding: 9px;
-  border-radius: 9px;
-  background: #f8fafc;
+.answer-sources > details > summary small {
+  min-width: 19px;
+  height: 19px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: #f0f2f5;
+  color: #667085;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
 }
 
-.answer-sources article > div {
+.source-list {
+  margin-top: 8px;
+  border-top: 1px solid #eef1f5;
+}
+
+.source-item {
+  border-bottom: 1px solid #eef1f5;
+}
+
+.source-item > summary {
+  min-height: 42px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
+  gap: 8px;
+  color: #344054;
+  cursor: pointer;
+  list-style: none;
 }
 
-.answer-sources article strong {
+.source-item > summary::-webkit-details-marker {
+  display: none;
+}
+
+.source-item > summary i {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  border-radius: 6px;
+  background: #f3f5f7;
+  color: #667085;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-style: normal;
+}
+
+.source-item > summary strong {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: #344054;
   font-size: 12px;
+  font-weight: 650;
 }
 
-.answer-sources article p {
-  margin: 5px 0;
+.source-detail {
+  padding: 0 4px 10px 28px;
+}
+
+.source-detail p {
+  margin: 0 0 6px;
   color: #667085;
   font-size: 12px;
   line-height: 1.55;
-  white-space: pre-wrap;
 }
 
-.answer-sources article small {
+.source-detail small {
+  display: block;
+  margin-top: 3px;
   color: #98a2b3;
   font-size: 10px;
   word-break: break-all;
+}
+
+.source-more {
+  margin: 9px 0 0;
+  color: #98a2b3;
+  font-size: 11px;
 }
 
 .trust-badge {
