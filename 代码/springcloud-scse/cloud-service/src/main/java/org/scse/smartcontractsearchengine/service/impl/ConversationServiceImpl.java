@@ -22,6 +22,7 @@ import org.scse.smartcontractsearchengine.model.vo.ConversationMessageVo;
 import org.scse.smartcontractsearchengine.model.vo.ConversationSessionVo;
 import org.scse.smartcontractsearchengine.service.ConversationService;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -58,6 +59,9 @@ public class ConversationServiceImpl implements ConversationService {
     private final OpenAIClientFactory openAIClientFactory;
     private final JdbcTemplate jdbcTemplate;
 
+    @Value("${legacy.conversation-ddl.enabled:true}")
+    private boolean legacyConversationDdlEnabled;
+
     public ConversationServiceImpl(AiChatSessionMapper sessionMapper,
                                    AiChatMessageMapper messageMapper,
                                    AiChatAttachmentMapper attachmentMapper,
@@ -72,6 +76,10 @@ public class ConversationServiceImpl implements ConversationService {
 
     @PostConstruct
     public void ensureConversationTables() {
+        if (!legacyConversationDdlEnabled) {
+            log.info("Legacy conversation startup DDL is disabled; schema is expected to be managed by Flyway");
+            return;
+        }
         jdbcTemplate.execute("""
                 CREATE TABLE IF NOT EXISTS ai_chat_session (
                     id BIGSERIAL PRIMARY KEY,

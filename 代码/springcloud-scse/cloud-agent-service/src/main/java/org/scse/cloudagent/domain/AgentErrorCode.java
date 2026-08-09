@@ -1,0 +1,16 @@
+package org.scse.cloudagent.domain;
+
+public enum AgentErrorCode {
+    AGENT_DISABLED,
+    UNAUTHORIZED,
+    RUN_NOT_FOUND,
+    RUN_NOT_OWNED,
+    INVALID_STATE_TRANSITION,
+    UNKNOWN_TOOL,
+    INVALID_TOOL_ARGUMENTS,
+    TOOL_TIMEOUT,
+    TOOL_POLICY_DENIED,
+    PROVIDER_ERROR,
+    BUDGET_EXCEEDED,
+    INTERNAL_ERROR
+}

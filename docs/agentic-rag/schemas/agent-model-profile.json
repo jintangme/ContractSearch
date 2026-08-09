@@ -1,0 +1,17 @@
+{
+  "profileVersion": "1.0",
+  "profileId": "agent-mvp-glm-4.5-air",
+  "provider": "zhipu",
+  "model": "glm-4.5-air",
+  "baseUrlEnv": "ZHIPU_BASE_URL",
+  "apiKeyEnv": "ZHIPU_API_KEY",
+  "timeoutMs": 60000,
+  "temperature": 0.1,
+  "thinking": "disabled",
+  "toolChoice": "auto",
+  "maxSteps": 6,
+  "maxToolCalls": 4,
+  "maxRetrievalRounds": 2,
+  "providerToolNameMapping": "Internal name.vN is sent as name__vN and mapped back after parsing.",
+  "notes": "Phase 1/1A profile only. Existing Chat default model remains unchanged."
+}

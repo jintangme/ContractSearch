@@ -109,6 +109,64 @@ export const conversationApi = {
   }),
 }
 
+// ===================== Agent Workspace API（默认由后端 feature flag 关闭） =====================
+export const agentApi = {
+  createSession: (data) => http.post('/agent/v1/sessions', data),
+  getSession: (id) => http.get(`/agent/v1/sessions/${id}`),
+  createRun: (data) => http.post('/agent/v1/runs', data, { timeout: 60000 }),
+  getRun: (id) => http.get(`/agent/v1/runs/${id}`),
+  getEvidence: (id) => http.get(`/agent/v1/runs/${id}/evidence`),
+  getProposals: (id) => http.get(`/agent/v1/runs/${id}/proposals`),
+
+  /**
+   * Authenticated SSE client. Native EventSource is intentionally not used
+   * because it cannot attach the existing bearer token.
+   */
+  streamEvents: async (runId, { after = 0, signal, onEvent } = {}) => {
+    const token = localStorage.getItem('token')
+    const response = await fetch(`/api/agent/v1/runs/${runId}/events?after=${after}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      signal,
+    })
+    if (!response.ok || !response.body) {
+      throw new Error(response.status === 401 ? '登录已失效' : 'Agent 事件流连接失败')
+    }
+
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      const frames = buffer.split(/\r?\n\r?\n/)
+      buffer = frames.pop() || ''
+      for (const frame of frames) {
+        const parsed = parseSseFrame(frame)
+        if (parsed && onEvent) onEvent(parsed)
+      }
+    }
+  },
+}
+
+function parseSseFrame(frame) {
+  const result = { id: null, event: 'message', data: null }
+  const data = []
+  for (const line of frame.split(/\r?\n/)) {
+    if (line.startsWith('id:')) result.id = line.slice(3).trim()
+    else if (line.startsWith('event:')) result.event = line.slice(6).trim()
+    else if (line.startsWith('data:')) data.push(line.slice(5).trimStart())
+  }
+  if (!data.length) return null
+  const raw = data.join('\n')
+  try {
+    result.data = JSON.parse(raw)
+  } catch {
+    result.data = raw
+  }
+  return result
+}
+
 // ===================== 合约详情接口 =====================
 export const contractApi = {
   getAllContracts: () => http.get('/contracts'),

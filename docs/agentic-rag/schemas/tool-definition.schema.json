@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contractsearch.local/schemas/tool-definition.schema.json",
+  "title": "ContractSearch Tool Definition",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["name", "description", "inputSchema", "sideEffect", "timeoutMs"],
+  "properties": {
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*\\.v[1-9][0-9]*$"
+    },
+    "description": {"type": "string", "minLength": 1, "maxLength": 1000},
+    "inputSchema": {"type": "object"},
+    "sideEffect": {
+      "type": "string",
+      "enum": ["NONE", "READ", "WRITE_REVERSIBLE", "EXECUTE_SANDBOXED", "EXTERNAL_NETWORK", "IRREVERSIBLE"]
+    },
+    "timeoutMs": {"type": "integer", "minimum": 1, "maximum": 120000},
+    "requiresApproval": {"type": "boolean", "default": false},
+    "minimumTrust": {
+      "type": "string",
+      "enum": ["VERIFIED", "AUTHORITATIVE", "CURATED", "COMMUNITY", "USER_PROVIDED", "TOOL_GENERATED", "UNTRUSTED"]
+    }
+  }
+}

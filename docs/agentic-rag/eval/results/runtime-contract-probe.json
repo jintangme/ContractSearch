@@ -1,0 +1,48 @@
+{
+  "probeVersion": "1.0",
+  "generatedAt": "2026-08-09T03:57:16.841Z",
+  "policy": {
+    "compileOnly": true,
+    "deployCalled": false,
+    "contractCallCalled": false,
+    "leanToolEnabled": false
+  },
+  "contractRuntime": {
+    "validCompile": {
+      "outcome": "OBSERVED",
+      "durationMs": 41,
+      "detail": {
+        "httpStatus": 200,
+        "success": true,
+        "compilerVersion": "0.8.35",
+        "contractCount": 1,
+        "errorCount": 0
+      }
+    },
+    "invalidCompile": {
+      "outcome": "OBSERVED",
+      "durationMs": 8,
+      "detail": {
+        "httpStatus": 400,
+        "success": false,
+        "structuredErrors": true,
+        "errorCount": 1
+      }
+    }
+  },
+  "leanRuntime": {
+    "basicCheck": {
+      "outcome": "OBSERVED",
+      "durationMs": 10017,
+      "detail": {
+        "httpStatus": 400,
+        "success": false,
+        "status": "failed",
+        "errorType": "LEAN_TIMEOUT",
+        "errorCount": 1,
+        "targetVersion": "4.31.0",
+        "versionVerified": false
+      }
+    }
+  }
+}

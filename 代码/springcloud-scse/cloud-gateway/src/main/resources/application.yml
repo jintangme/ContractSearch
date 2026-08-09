@@ -32,5 +32,10 @@ security:
   jwt:
     secret: ${JWT_SECRET:scse-dev-jwt-secret-2026-local-min-32-bytes}
 
+agent:
+  route:
+    enabled: ${AGENT_ROUTE_ENABLED:false}
+    internal-token: ${AGENT_INTERNAL_TOKEN:}
+
 server:
   port: 18080

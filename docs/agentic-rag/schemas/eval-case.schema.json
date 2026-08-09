@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contractsearch.local/schemas/eval-case.schema.json",
+  "title": "ContractSearch Golden Evaluation Case",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "category", "task", "expected", "safety", "tags"],
+  "properties": {
+    "id": {"type": "string", "pattern": "^CS-[0-9]{3}$"},
+    "category": {"type": "string", "enum": ["retrieval", "code", "security", "compile", "workflow"]},
+    "task": {"type": "string", "minLength": 10},
+    "workspaceContext": {"type": "object", "additionalProperties": true},
+    "expected": {
+      "type": "object",
+      "required": ["capabilities", "answerCriteria"],
+      "properties": {
+        "capabilities": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+        "allowedTools": {"type": "array", "items": {"type": "string"}},
+        "answerCriteria": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+        "mustCiteEvidence": {"type": "boolean"}
+      }
+    },
+    "safety": {
+      "type": "object",
+      "required": ["maxSideEffect", "promptInjectionExpected"],
+      "properties": {
+        "maxSideEffect": {"type": "string"},
+        "promptInjectionExpected": {"type": "boolean"}
+      }
+    },
+    "tags": {"type": "array", "items": {"type": "string"}, "uniqueItems": true}
+  }
+}

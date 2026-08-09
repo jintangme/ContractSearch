@@ -29,6 +29,10 @@ mybatis-plus:
 file:
   storage:
 
+legacy:
+  conversation-ddl:
+    enabled: ${LEGACY_CONVERSATION_DDL_ENABLED:true}
+
 security:
   jwt:
     secret: ${JWT_SECRET:scse-dev-jwt-secret-2026-local-min-32-bytes}

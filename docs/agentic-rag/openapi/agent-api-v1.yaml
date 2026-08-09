@@ -1,0 +1,238 @@
+openapi: 3.1.0
+info:
+  title: ContractSearch Agent API
+  version: 1.0.0
+  description: Phase 1 contract. All endpoints are disabled unless agent.enabled=true.
+servers:
+  - url: /api/agent/v1
+security:
+  - bearerAuth: []
+paths:
+  /sessions:
+    post:
+      operationId: createAgentSession
+      tags: [Session]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CreateSessionRequest'}
+      responses:
+        '200':
+          description: Session created
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AgentSession'}
+  /sessions/{sessionId}:
+    get:
+      operationId: getAgentSession
+      tags: [Session]
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+      responses:
+        '200':
+          description: Owned session
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AgentSession'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /runs:
+    post:
+      operationId: createAgentRun
+      tags: [Run]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CreateRunRequest'}
+      responses:
+        '200':
+          description: Run accepted; Phase 1 mock completes synchronously
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AgentRun'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+  /runs/{runId}:
+    get:
+      operationId: getAgentRun
+      tags: [Run]
+      parameters:
+        - $ref: '#/components/parameters/RunId'
+      responses:
+        '200':
+          description: Owned run
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AgentRun'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /runs/{runId}/events:
+    get:
+      operationId: streamAgentEvents
+      tags: [Event]
+      description: Use authenticated fetch streaming. Last-Event-ID/cursor resume is reserved for the persistence implementation.
+      parameters:
+        - $ref: '#/components/parameters/RunId'
+        - name: after
+          in: query
+          schema: {type: integer, format: int64, minimum: 0}
+      responses:
+        '200':
+          description: Ordered Server-Sent Events
+          content:
+            text/event-stream:
+              schema: {$ref: '#/components/schemas/AgentEvent'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /runs/{runId}/evidence:
+    get:
+      operationId: listRunEvidence
+      tags: [Evidence]
+      parameters:
+        - $ref: '#/components/parameters/RunId'
+      responses:
+        '200':
+          description: Evidence visible to the run owner
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/EvidenceItem'}
+  /runs/{runId}/proposals:
+    get:
+      operationId: listRunProposals
+      tags: [Proposal]
+      parameters:
+        - $ref: '#/components/parameters/RunId'
+      responses:
+        '200':
+          description: Reviewable proposals; Phase 1 exposes read-only mock proposals
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/Proposal'}
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    RunId:
+      name: runId
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+    SessionId:
+      name: sessionId
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+  responses:
+    BadRequest:
+      description: Invalid contract input
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ApiError'}
+    NotFound:
+      description: Resource is absent or not owned by the authenticated user
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ApiError'}
+  schemas:
+    CreateSessionRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        title: {type: string, maxLength: 120}
+        workspaceContext: {$ref: '#/components/schemas/WorkspaceContext'}
+    CreateRunRequest:
+      type: object
+      additionalProperties: false
+      required: [task]
+      properties:
+        sessionId: {type: [string, 'null'], format: uuid}
+        task: {type: string, minLength: 1, maxLength: 12000}
+        workspaceContext: {$ref: '#/components/schemas/WorkspaceContext'}
+    WorkspaceContext:
+      type: object
+      description: Immutable per-request references; source text remains untrusted data.
+      additionalProperties: true
+      properties:
+        selectedContractId: {type: [integer, 'null'], format: int64}
+        draftId: {type: [integer, 'null'], format: int64}
+        conversationSessionId: {type: [integer, 'null'], format: int64}
+        activeLabFile: {type: [string, 'null'], maxLength: 500}
+        attachmentIds:
+          type: array
+          maxItems: 20
+          items: {type: integer, format: int64}
+    AgentSession:
+      type: object
+      required: [id, userId, title, workspaceContext, createdAt]
+      properties:
+        id: {type: string, format: uuid}
+        userId: {type: integer, format: int64}
+        title: {type: string}
+        workspaceContext: {type: object, additionalProperties: true}
+        createdAt: {type: string, format: date-time}
+    AgentRun:
+      type: object
+      required: [id, userId, task, model, traceId, state, events, evidence, proposals]
+      properties:
+        id: {type: string, format: uuid}
+        sessionId: {type: [string, 'null'], format: uuid}
+        userId: {type: integer, format: int64}
+        task: {type: string}
+        model: {type: string, const: glm-4.5-air}
+        traceId: {type: string}
+        state: {$ref: '#/components/schemas/AgentRunState'}
+        answer: {type: [string, 'null']}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+        events: {type: array, items: {$ref: '#/components/schemas/AgentEvent'}}
+        evidence: {type: array, items: {$ref: '#/components/schemas/EvidenceItem'}}
+        proposals: {type: array, items: {$ref: '#/components/schemas/Proposal'}}
+    AgentRunState:
+      type: string
+      enum: [RECEIVED, PLAN, TOOL_CALL, OBSERVE, SYNTHESIZE, COMPLETE, FAILED]
+    AgentEvent:
+      type: object
+      required: [sequence, type, createdAt, data]
+      properties:
+        sequence: {type: integer, format: int64, minimum: 1}
+        type: {type: string}
+        createdAt: {type: string, format: date-time}
+        data: {type: object, additionalProperties: true}
+    EvidenceItem:
+      type: object
+      required: [id, sourceType, sourceRef, trustLevel, metadata]
+      properties:
+        id: {type: string, format: uuid}
+        sourceType: {type: string}
+        sourceRef: {type: string}
+        title: {type: [string, 'null']}
+        excerpt: {type: [string, 'null']}
+        trustLevel:
+          type: string
+          enum: [VERIFIED, AUTHORITATIVE, CURATED, COMMUNITY, USER_PROVIDED, TOOL_GENERATED, UNTRUSTED]
+        metadata: {type: object, additionalProperties: true}
+    Proposal:
+      type: object
+      required: [id, kind, status, summary, payload, createdAt]
+      properties:
+        id: {type: string, format: uuid}
+        kind: {type: string}
+        status: {type: string, enum: [PENDING, APPROVED, REJECTED, EXECUTED, CANCELLED]}
+        summary: {type: string}
+        payload: {type: object, additionalProperties: true}
+        createdAt: {type: string, format: date-time}
+    ApiError:
+      type: object
+      required: [code, message, timestamp]
+      properties:
+        code:
+          type: string
+          enum: [AGENT_DISABLED, UNAUTHORIZED, RUN_NOT_FOUND, RUN_NOT_OWNED, INVALID_STATE_TRANSITION, UNKNOWN_TOOL, INVALID_TOOL_ARGUMENTS, TOOL_TIMEOUT, TOOL_POLICY_DENIED, PROVIDER_ERROR, BUDGET_EXCEEDED, INTERNAL_ERROR]
+        message: {type: string}
+        traceId: {type: [string, 'null']}
+        timestamp: {type: string, format: date-time}

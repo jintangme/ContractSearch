@@ -1,0 +1,53 @@
+spring:
+  application:
+    name: cloud-agent-service
+  cloud:
+    nacos:
+      server-addr: ${NACOS_SERVER_ADDR:127.0.0.1:8848}
+      discovery:
+        server-addr: ${spring.cloud.nacos.server-addr}
+        enabled: ${NACOS_DISCOVERY_ENABLED:true}
+  config:
+    import:
+      - optional:nacos:nacos-config-example.properties?refreshEnabled=true
+
+server:
+  port: ${AGENT_SERVICE_PORT:18082}
+
+agent:
+  enabled: ${AGENT_ENABLED:false}
+  internal-token: ${AGENT_INTERNAL_TOKEN:}
+  model: ${AGENT_MODEL:glm-4.5-air}
+  provider:
+    base-url: ${ZHIPU_BASE_URL:https://open.bigmodel.cn/api/paas/v4}
+    api-key: ${ZHIPU_API_KEY:}
+    timeout-ms: ${AGENT_PROVIDER_TIMEOUT_MS:60000}
+    thinking-enabled: ${AGENT_THINKING_ENABLED:false}
+  migrations:
+    enabled: ${AGENT_MIGRATIONS_ENABLED:false}
+    url: ${AGENT_DB_URL:}
+    username: ${AGENT_DB_USERNAME:}
+    password: ${AGENT_DB_PASSWORD:}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+  info:
+    env:
+      enabled: true
+
+info:
+  app:
+    name: ${spring.application.name}
+    model-profile: ${agent.model}
+    agent-enabled: ${agent.enabled}
+
+logging:
+  pattern:
+    level: "%5p trace_id=%X{traceId:-none}"

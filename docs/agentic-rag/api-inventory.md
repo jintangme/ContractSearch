@@ -62,3 +62,18 @@ compile_contract.v1  -> POST /api/runtime/compile
 
 No persistent write, deploy, call, Lean, shell, filesystem or arbitrary URL tool is allowed.
 
+## Phase 1 Agent control-plane contract
+
+The following endpoints now exist in `cloud-agent-service` but are absent unless `AGENT_ENABLED=true`:
+
+| Endpoint | Purpose | Ownership guard |
+|---|---|---|
+| `POST /api/agent/v1/sessions` | create Workspace-aware session | trusted Gateway token + `X-User-Id` |
+| `GET /api/agent/v1/sessions/{id}` | get owned session | user ownership |
+| `POST /api/agent/v1/runs` | execute Phase 1 mock loop | user ownership + input validation |
+| `GET /api/agent/v1/runs/{id}` | get run snapshot | user ownership |
+| `GET /api/agent/v1/runs/{id}/events?after=N` | authenticated SSE/resume | ordered sequence + user ownership |
+| `GET /api/agent/v1/runs/{id}/evidence` | list run evidence | user ownership |
+| `GET /api/agent/v1/runs/{id}/proposals` | list reviewable proposals | user ownership |
+
+The canonical contract is `docs/agentic-rag/openapi/agent-api-v1.yaml`. The frontend uses authenticated `fetch` streaming rather than native `EventSource` so the bearer token is never placed in a query string.

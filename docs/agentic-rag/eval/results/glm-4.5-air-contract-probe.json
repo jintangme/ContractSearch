@@ -1,0 +1,10 @@
+{
+  "probeVersion": "1.0",
+  "provider": "zhipu",
+  "model": "glm-4.5-air",
+  "baseUrl": "https://open.bigmodel.cn/api/paas/v4",
+  "generatedAt": "2026-08-09T03:57:55.724Z",
+  "containsCredentials": false,
+  "status": "BLOCKED_MISSING_ZHIPU_API_KEY",
+  "checks": {}
+}

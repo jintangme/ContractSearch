@@ -30,23 +30,25 @@ The production Nginx configuration is not present in the repository. Phase 1 mus
 | Semantic/code search | `cloud-service` | `search_contracts.v1` adapter, then evidence-ready retrieval |
 | AI Chat/precheck/explain | `cloud-service` | provider/client reuse; old UI remains fallback |
 | Draft/favorite/history | `cloud-service` | user-scoped Workspace tools; writes require proposal/policy |
-| Agent state/evidence | not implemented | new `cloud-agent-service` |
+| Agent state/evidence | Phase 1 in-memory mock implemented, persistence disabled | `cloud-agent-service` owns durable implementation |
 | Solidity compile/deploy/call | `contract-runtime-service` | sandbox tools after version/isolation hardening |
 | Lean checking | `lean-runtime-service` | bounded proof tool after environment pinning |
 | Contract discovery/import | `scse-discover` | offline ingestion source; not an online Agent tool |
 
-## Intended Phase 1 service addition
+## Phase 1 service addition (implemented, default off)
 
 ```text
 Gateway :18080
   -> /api/agent/**
-  -> contractsearch-agent-service :18082
+  -> cloud-agent-service :18082
        ├─ OpenFeign -> smart-contract-search-engine
        ├─ typed HTTP -> contract runtime
        └─ typed HTTP -> Lean runtime (disabled in Phase 1A)
 ```
 
 `cloud-agent-service` owns orchestration only. Search, contracts, users and runtime execution remain with their current owners.
+
+Activation requires both `AGENT_ROUTE_ENABLED=true` in Gateway and `AGENT_ENABLED=true` in Agent Service, with the same non-committed `AGENT_INTERNAL_TOKEN`. Database migration is an independent `AGENT_MIGRATIONS_ENABLED` flag and remains off in the running system.
 
 ## Local restart dependency order
 
@@ -58,5 +60,4 @@ When a later phase changes services, restart in this order:
 4. `cloud-gateway` after route/config changes.
 5. Vue/Vite after `.env`, API client, router or UI changes.
 
-Phase 0 itself changes documentation only and requires no service restart.
-
+Phase 1 code changes require `cloud-service` and `cloud-gateway` restarts only when the new build is deployed. The new `cloud-agent-service` is not part of the currently running stack until explicitly started.
