@@ -6,14 +6,7 @@
           <button class="new-chat-button" type="button" @click="resetConversation">新对话</button>
           <h1 v-if="currentConversationTitle !== '新对话'">{{ currentConversationTitle }}</h1>
         </div>
-        <div class="conversation-mode-switch" aria-label="对话模式">
-          <button type="button" :class="{ active: conversationMode === 'agent' }" @click="setConversationMode('agent')">
-            Agent
-          </button>
-          <button type="button" :class="{ active: conversationMode === 'chat' }" @click="setConversationMode('chat')">
-            普通对话
-          </button>
-        </div>
+        <span class="assistant-status">智能检索已开启</span>
         <button class="history-button" type="button" @click="openHistory">
           对话记录
           <span v-if="sessions.length">{{ sessions.length }}</span>
@@ -22,8 +15,8 @@
 
       <div ref="messageListRef" class="message-list">
         <div v-if="!messages.length" class="empty-state">
-          <h2>直接告诉 Agent 你想完成什么</h2>
-          <p>它会自动判断是否检索合约库、领域知识库，或调用编译与安全工具，并展示执行过程和证据。</p>
+          <h2>有什么想了解的？</h2>
+          <p>直接描述你的需求，系统会自动检索合约库和知识库，并在需要时检查源码、编译结果与安全风险。</p>
           <div class="suggestions">
             <button type="button" @click="useSuggestion('找一个适合积分系统、普通用户不能随意 mint 的 ERC20 合约，并给出证据')">查找可复用 ERC20</button>
             <button type="button" @click="useSuggestion('比较合约库中 ERC20 与 ERC721 的实现和安全差异，并说明依据')">比较合约与标准</button>
@@ -38,52 +31,37 @@
           :class="`message-row--${message.role}`"
         >
           <div class="message-bubble">
-            <div v-if="message.role === 'assistant' && message.loading" class="assistant-loading">
-              <span>{{ message.agentLoading ? 'Agent 正在检索与验证' : '正在分析' }}</span>
-              <i></i>
-              <i></i>
-              <i></i>
-            </div>
-            <MarkdownMessage v-else-if="message.role === 'assistant'" :content="message.content" />
-            <p v-else class="message-content">{{ message.content }}</p>
-            <section v-if="message.agentRun" class="agent-run-card" :class="`agent-run-card--${String(message.agentRun.state || '').toLowerCase()}`">
-              <div class="agent-run-head">
-                <div>
-                  <strong>{{ agentRunTitle(message.agentRun.state) }}</strong>
-                  <span>{{ message.agentRun.steps }} 次决策 · {{ message.agentRun.toolCalls }} 次工具 · {{ message.agentRun.retrievalRounds }} 轮检索</span>
-                </div>
-                <code>{{ message.agentRun.model }}</code>
-              </div>
-              <ol v-if="message.agentRun.timeline?.length" class="agent-step-list">
-                <li v-for="step in message.agentRun.timeline" :key="step.key" :class="`agent-step--${step.status}`">
+            <section v-if="message.role === 'assistant' && message.agentRun?.timeline?.length" class="activity-stream">
+              <ol>
+                <li v-for="step in message.agentRun.timeline" :key="step.key" :class="`activity-line--${step.status}`">
+                  <i aria-hidden="true"></i>
                   <span>{{ step.label }}</span>
-                  <small>{{ timelineStatusLabel(step.status) }}</small>
-                  <p v-if="step.detail">{{ step.detail }}</p>
                 </li>
               </ol>
-              <details v-if="message.agentRun.evidence?.length" class="agent-evidence">
-                <summary>查看 Evidence（{{ message.agentRun.evidence.length }}）</summary>
+            </section>
+            <div v-else-if="message.role === 'assistant' && message.loading" class="assistant-loading">
+              <span>正在理解你的问题</span><i></i><i></i><i></i>
+            </div>
+            <MarkdownMessage v-if="message.role === 'assistant' && !message.loading" :content="message.content" />
+            <p v-if="message.role !== 'assistant'" class="message-content">{{ message.content }}</p>
+            <section v-if="message.agentRun?.evidence?.length && !message.loading" class="answer-sources">
+              <details>
+                <summary>查看参考来源（{{ message.agentRun.evidence.length }}）</summary>
                 <article v-for="item in message.agentRun.evidence" :key="item.id">
                   <div>
                     <strong>{{ item.title || item.sourceType }}</strong>
-                    <span :class="`trust-badge trust-badge--${String(item.trustLevel || '').toLowerCase()}`">{{ item.trustLevel }}</span>
+                    <span :class="`trust-badge trust-badge--${String(item.trustLevel || '').toLowerCase()}`">{{ trustLevelLabel(item.trustLevel) }}</span>
                   </div>
                   <p>{{ item.excerpt || item.sourceRef }}</p>
-                  <code>{{ item.id }}</code>
+                  <small>{{ item.sourceRef }}</small>
                 </article>
               </details>
-              <button v-if="message.agentRun.state === 'FAILED'" type="button" class="agent-fallback" @click="retryWithStandardChat(message)">
-                切换普通对话重试
-              </button>
             </section>
             <div v-if="message.attachments?.length" class="message-attachments">
               <span v-for="attachment in message.attachments" :key="attachment.localId || attachment.id" class="attachment-chip">
                 {{ attachment.fileName }}
               </span>
             </div>
-            <p v-if="message.role === 'assistant' && message.modelUsed" class="model-used">
-              由 {{ message.modelUsed }} 生成
-            </p>
           </div>
           <div v-if="message.role === 'assistant' && !message.loading" class="message-actions">
             <button
@@ -95,21 +73,6 @@
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                 <rect x="9" y="9" width="10" height="10" rx="2" />
                 <path d="M5 15H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1" />
-              </svg>
-            </button>
-            <button
-              v-if="!message.agentRun"
-              type="button"
-              :disabled="isSending"
-              title="重新生成"
-              aria-label="重新生成"
-              @click="regenerateAssistantMessage(message)"
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-                <path d="M21 12a9 9 0 0 1-15.5 6.2" />
-                <path d="M3 12a9 9 0 0 1 15.5-6.2" />
-                <path d="M18 3v4h-4" />
-                <path d="M6 21v-4h4" />
               </svg>
             </button>
           </div>
@@ -157,15 +120,9 @@
             </button>
             <div v-if="attachmentMenuOpen" class="attachment-menu">
               <button type="button" @click="openContractPicker">选择合约</button>
-              <button v-if="conversationMode === 'chat'" type="button" @click="openWorkspacePicker">工作台文件</button>
-              <button v-if="conversationMode === 'chat'" type="button" @click="openLocalFilePicker">本地文件</button>
             </div>
           </div>
-          <label v-if="conversationMode === 'chat'" class="model-inline">
-            <span>模型</span>
-            <AiModelSelect v-model="selectedModel" label="" @update:model-value="persistSelectedModel" />
-          </label>
-          <span v-else class="agent-model-inline">Agent · glm-4.5-air</span>
+          <span class="agent-model-inline">自动检索 · 工具检查 · 来源可追溯</span>
           <button class="send-button" type="button" :disabled="!canSend" @click="sendMessage">
             {{ isSending ? '生成中...' : '发送' }}
           </button>
@@ -194,7 +151,7 @@
           >
             <div>
               <strong>{{ session.title || '未命名对话' }}</strong>
-              <span>{{ formatTime(session.updatedAt) }} · {{ session.model || '-' }}</span>
+              <span>{{ formatTime(session.updatedAt) }}</span>
             </div>
             <button type="button" @click.stop="askDeleteSession(session)">删除</button>
           </article>
@@ -205,11 +162,10 @@
     <div v-if="pickerOpen" class="picker-backdrop" @click.self="closePicker">
       <section class="picker">
         <header>
-          <h2>{{ pickerType === 'contract' ? '选择合约' : '工作台文件' }}</h2>
+          <h2>选择合约</h2>
           <button type="button" @click="closePicker">×</button>
         </header>
         <input
-          v-if="pickerType === 'contract'"
           v-model="contractQuery"
           class="picker-search"
           placeholder="搜索合约名或地址"
@@ -219,7 +175,7 @@
             v-for="item in pickerItems"
             :key="item.id"
             type="button"
-            @click="pickerType === 'contract' ? attachContract(item) : attachWorkspaceFile(item)"
+            @click="attachContract(item)"
           >
             <strong>{{ item.contractName || item.name }}</strong>
             <span>{{ item.address || item.fileType || 'solidity' }}</span>
@@ -242,7 +198,6 @@
       </section>
     </div>
 
-    <input ref="localFileInput" type="file" accept=".txt,.sol,.pdf,.docx" hidden @change="handleLocalFile" />
   </main>
 </template>
 
@@ -250,16 +205,11 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { agentApi, conversationApi, contractApi } from '@/api'
-import AiModelSelect from '@/components/AiModelSelect.vue'
 import MarkdownMessage from '@/components/MarkdownMessage.vue'
-import { getStoredAiModel, persistAiModel } from '@/config/aiModels'
 
-const LAB_WORKSPACE_KEY = 'contractLabWorkspaceV1'
 const route = useRoute()
 const router = useRouter()
 
-const selectedModel = ref(getStoredAiModel())
-const conversationMode = ref('agent')
 const currentAgentSessionId = ref(null)
 const inputText = ref('')
 const messages = ref([])
@@ -273,22 +223,19 @@ const pickerOpen = ref(false)
 const pickerType = ref('')
 const contractQuery = ref('')
 const contractOptions = ref([])
-const workspaceOptions = ref([])
 const isSending = ref(false)
 const errorMessage = ref('')
-const localFileInput = ref(null)
 const messageListRef = ref(null)
 const deleteConfirm = ref({ open: false, mode: 'delete', session: null })
 const copiedMessageId = ref('')
 
 const canSend = computed(() => inputText.value.trim().length > 0 && !isSending.value)
 const currentConversationTitle = computed(() => {
-  if (conversationMode.value === 'agent') return messages.value.length ? 'Agent 对话' : '新对话'
+  if (messages.value.length && !currentSessionId.value) return 'AI 对话'
   if (!currentSessionId.value) return '新对话'
   return sessions.value.find(item => item.id === currentSessionId.value)?.title || '新对话'
 })
 const pickerItems = computed(() => {
-  if (pickerType.value === 'workspace') return workspaceOptions.value
   const query = contractQuery.value.trim().toLowerCase()
   const list = contractOptions.value
   if (!query) return list.slice(0, 20)
@@ -310,22 +257,12 @@ onBeforeUnmount(() => {
   window.removeEventListener('conversation:new', resetConversation)
 })
 
-function persistSelectedModel() {
-  selectedModel.value = persistAiModel(selectedModel.value)
-}
-
 function resetConversation() {
   currentSessionId.value = null
   currentAgentSessionId.value = null
   messages.value = []
   attachments.value = []
   inputText.value = ''
-  errorMessage.value = ''
-}
-
-function setConversationMode(mode) {
-  if (!['agent', 'chat'].includes(mode) || isSending.value) return
-  conversationMode.value = mode
   errorMessage.value = ''
 }
 
@@ -347,7 +284,6 @@ async function loadSession(id) {
     const response = await conversationApi.getSession(id)
     const session = response?.data
     currentSessionId.value = session?.id || null
-    conversationMode.value = 'chat'
     messages.value = Array.isArray(session?.messages) ? session.messages : []
     attachments.value = []
     historyOpen.value = false
@@ -404,15 +340,7 @@ async function sendMessage() {
   if (!text || isSending.value) return
   isSending.value = true
   errorMessage.value = ''
-  const outgoingAttachments = attachments.value.map(toPayload)
   const workspaceContext = buildWorkspaceContext(attachments.value)
-  if (outgoingAttachments.some(item => !String(item.contentText || '').trim())) {
-    errorMessage.value = '附件内容未读取'
-    isSending.value = false
-    return
-  }
-  const totalAttachmentChars = outgoingAttachments.reduce((sum, item) => sum + String(item.contentText || '').length, 0)
-  console.info(`[conversation] attachments=${outgoingAttachments.length} contentLength=${totalAttachmentChars}`)
   const userMessage = {
     localId: `user-${Date.now()}`,
     role: 'user',
@@ -427,7 +355,6 @@ async function sendMessage() {
     role: 'assistant',
     content: '正在分析...',
     loading: true,
-    agentLoading: conversationMode.value === 'agent',
     createdAt: new Date().toISOString(),
     attachments: []
   })
@@ -435,45 +362,7 @@ async function sendMessage() {
   attachments.value = []
   attachmentPreview.value = null
   try {
-    if (conversationMode.value === 'agent') {
-      await sendAgentMessage({ text, assistantLocalId, workspaceContext })
-      return
-    }
-    const response = await conversationApi.chat({
-      sessionId: currentSessionId.value,
-      model: selectedModel.value,
-      message: text,
-      attachments: outgoingAttachments
-    })
-    if (response?.status === false || response?.data?.success === false) {
-      throw new Error(response?.data?.errorCode || response?.message || 'AI_PROVIDER_ERROR')
-    }
-    const payload = response?.data
-    currentSessionId.value = payload?.sessionId || currentSessionId.value
-    replaceMessage(assistantLocalId, {
-      id: payload?.messageId,
-      localId: assistantLocalId,
-      role: 'assistant',
-      content: payload?.content || '生成失败，请重试',
-      modelUsed: payload?.modelUsed || selectedModel.value,
-      requestedModel: payload?.requestedModel,
-      createdAt: payload?.createdAt || new Date().toISOString(),
-      attachments: []
-    })
-    await loadSessions()
-  } catch (error) {
-    const text = String(error?.message || error || '')
-    const friendlyMessage = text.includes('ATTACHMENT_CONTENT_MISSING') || text.includes('附件内容缺失')
-      ? '附件内容缺失'
-      : '生成失败，请重试'
-    replaceMessage(assistantLocalId, {
-      localId: assistantLocalId,
-      role: 'assistant',
-      content: friendlyMessage,
-      modelUsed: selectedModel.value,
-      createdAt: new Date().toISOString(),
-      attachments: []
-    })
+    await sendAgentMessage({ text, assistantLocalId, workspaceContext })
   } finally {
     isSending.value = false
   }
@@ -501,9 +390,8 @@ async function sendAgentMessage({ text, assistantLocalId, workspaceContext }) {
       localId: assistantLocalId,
       role: 'assistant',
       content: completed
-        ? (run?.answer || 'Agent 已完成，但未返回答案。')
-        : `Agent 未能完成任务：${run?.failureMessage || run?.errorCode || '未知错误'}`,
-      modelUsed: run?.model || 'glm-4.5-air',
+        ? (run?.answer || '分析已完成，但暂时没有可展示的答案。')
+        : `本次分析未能完成：${run?.failureMessage || run?.errorCode || '未知错误'}`,
       createdAt: run?.updatedAt || new Date().toISOString(),
       attachments: [],
       agentRun,
@@ -512,8 +400,7 @@ async function sendAgentMessage({ text, assistantLocalId, workspaceContext }) {
     replaceMessage(assistantLocalId, {
       localId: assistantLocalId,
       role: 'assistant',
-      content: `Agent 服务暂时不可用：${friendlyAgentError(error)}`,
-      modelUsed: 'glm-4.5-air',
+      content: `AI 助手暂时不可用：${friendlyAgentError(error)}`,
       createdAt: new Date().toISOString(),
       attachments: [],
       agentRun: {
@@ -566,10 +453,8 @@ function updateAgentProgress(assistantLocalId, run = {}) {
   replaceMessage(assistantLocalId, {
     localId: assistantLocalId,
     role: 'assistant',
-    content: 'Agent 正在执行任务…',
+    content: '正在处理你的问题…',
     loading: !['COMPLETE', 'FAILED'].includes(run?.state),
-    agentLoading: true,
-    modelUsed: run?.model || 'glm-4.5-air',
     createdAt: run?.updatedAt || new Date().toISOString(),
     attachments: [],
     agentRun: summarizeAgentRun(run),
@@ -579,35 +464,33 @@ function updateAgentProgress(assistantLocalId, run = {}) {
 function buildAgentTimeline(events = [], runState = 'RECEIVED') {
   const timeline = []
   const toolRows = new Map()
-  const add = (key, label, status = 'complete', detail = '') => {
+  const add = (key, label, status = 'complete') => {
     const existing = timeline.find(item => item.key === key)
-    if (existing) Object.assign(existing, { label, status, detail })
-    else timeline.push({ key, label, status, detail })
+    if (existing) Object.assign(existing, { label, status })
+    else timeline.push({ key, label, status })
   }
-  if (!events.length) add('received', '接收问题并准备规划', runState === 'FAILED' ? 'failed' : 'running')
+  if (!events.length) add('received', '正在理解你的问题', runState === 'FAILED' ? 'failed' : 'running')
   events.forEach(event => {
     const payload = event?.data?.payload || {}
-    if (event.type === 'run.plan') add('plan', '理解问题并制定执行计划')
-    if (event.type === 'model.action') {
-      const action = payload.actionType === 'TOOL_CALL' ? '判断下一步需要补充信息' : '判断证据是否足够'
-      add(`decision-${event.sequence}`, `第 ${payload.step || '?'} 次决策：${action}`, 'complete', payload.reasonSummary || payload.evidenceGap || '')
-    }
+    if (event.type === 'run.plan') add('plan', '已理解问题，正在查找相关信息')
     if (event.type === 'tool.requested') {
       const id = String(payload.toolCallId || event.sequence)
-      const row = { key: `tool-${id}`, label: toolLabel(payload.tool || '未知工具'), status: 'running', detail: '正在调用工具并等待结果' }
+      const row = { key: `tool-${id}`, label: toolActivityLabel(payload.tool, false), status: 'running' }
       toolRows.set(id, row)
       timeline.push(row)
     }
     if (event.type === 'tool.completed') {
       const id = String(payload.toolCallId || '')
       const row = toolRows.get(id)
-      if (row) Object.assign(row, { status: 'complete', detail: `已生成 ${(payload.evidenceIds || []).length} 条证据` })
-      else add(`tool-complete-${event.sequence}`, toolLabel(payload.tool || '未知工具'))
+      if (row) Object.assign(row, { status: 'complete', label: toolActivityLabel(payload.tool, true) })
+      else add(`tool-complete-${event.sequence}`, toolActivityLabel(payload.tool, true))
     }
-    if (event.type === 'run.synthesizing') add('synthesis', '整理证据并生成最终回答', 'running')
-    if (event.type === 'run.completed') add('synthesis', '整理证据并生成最终回答', 'complete')
-    if (event.type === 'run.failed') add('failed', 'Agent 执行终止', 'failed', payload.message || payload.errorCode || '')
+    if (event.type === 'run.synthesizing') add('synthesis', '正在整理资料并生成回答', 'running')
+    if (event.type === 'run.completed') add('synthesis', '已完成资料整理', 'complete')
+    if (event.type === 'run.failed') add('failed', '处理过程中遇到问题', 'failed')
   })
+  if (runState === 'PLAN') add('current-work', '正在查找与问题相关的信息', 'running')
+  if (runState === 'OBSERVE') add('current-work', '正在整理刚刚找到的资料', 'running')
   return timeline
 }
 
@@ -615,54 +498,47 @@ function delay(ms) {
   return new Promise(resolve => window.setTimeout(resolve, ms))
 }
 
-function agentRunTitle(state) {
-  if (state === 'COMPLETE') return 'Agent 任务完成'
-  if (state === 'FAILED') return 'Agent 任务失败'
-  return 'Agent 正在执行'
-}
-
-function timelineStatusLabel(status) {
-  if (status === 'running') return '进行中'
-  if (status === 'failed') return '失败'
-  return '已完成'
-}
-
 function buildWorkspaceContext(items = []) {
   const selectedContract = items.find(item => item.sourceType === 'contract' && Number(item.contractId) > 0)
-  const workspaceFile = items.find(item => item.sourceType === 'workspace')
   const context = { origin: 'conversation' }
   if (selectedContract) context.selectedContractId = Number(selectedContract.contractId)
-  if (workspaceFile?.fileName) context.activeLabFile = workspaceFile.fileName
   if (Number(currentSessionId.value) > 0) context.conversationSessionId = Number(currentSessionId.value)
   return context
 }
 
 function friendlyAgentError(error) {
   const text = String(error?.message || error || '')
-  if (text.includes('404') || text.includes('AGENT_DISABLED')) return 'Agent 模式未启用，可切换普通对话'
-  if (text.includes('timeout') || text.includes('超时')) return 'Agent 执行超时，可稍后重试'
-  return '请检查 Agent Service 和 Gateway'
+  if (text.includes('404') || text.includes('AGENT_DISABLED')) return '智能问答服务尚未启用'
+  if (text.includes('timeout') || text.includes('超时')) return '处理超时，请稍后重试'
+  return '请检查智能问答服务是否正常运行'
 }
 
-async function retryWithStandardChat(message) {
-  const index = messages.value.findIndex(item => item === message)
-  const userMessage = [...messages.value.slice(0, index)].reverse().find(item => item.role === 'user')
-  if (!userMessage?.content || isSending.value) return
-  conversationMode.value = 'chat'
-  inputText.value = userMessage.content
-  attachments.value = Array.isArray(userMessage.attachments) ? [...userMessage.attachments] : []
-  await nextTick()
-  sendMessage()
+function toolActivityLabel(tool, completed) {
+  const labels = {
+    'retrieve_knowledge.v1': ['正在检索知识库', '已检索知识库'],
+    retrieve_knowledge: ['正在检索知识库', '已检索知识库'],
+    'search_contracts.v1': ['正在搜索合约库', '已搜索合约库'],
+    search_contracts: ['正在搜索合约库', '已搜索合约库'],
+    'get_contract.v1': ['正在读取合约源码', '已读取合约源码'],
+    get_contract: ['正在读取合约源码', '已读取合约源码'],
+    'compile_contract.v1': ['正在检查合约能否编译', '已检查合约编译结果'],
+    compile_contract: ['正在检查合约能否编译', '已检查合约编译结果'],
+    'precheck_contract.v1': ['正在检查合约安全风险', '已完成基础安全检查'],
+    precheck_contract: ['正在检查合约安全风险', '已完成基础安全检查'],
+  }
+  return labels[tool]?.[completed ? 1 : 0] || (completed ? '已完成一项检查' : '正在检查相关信息')
 }
 
-function toolLabel(tool) {
+function trustLevelLabel(level) {
   return {
-    'retrieve_knowledge.v1': '检索领域知识',
-    'search_contracts.v1': '搜索合约',
-    'get_contract.v1': '读取合约源码',
-    'compile_contract.v1': '沙箱编译',
-    'precheck_contract.v1': '安全预审',
-  }[tool] || tool
+    VERIFIED: '已验证',
+    AUTHORITATIVE: '权威来源',
+    CURATED: '精选资料',
+    COMMUNITY: '社区资料',
+    USER_PROVIDED: '用户提供',
+    TOOL_GENERATED: '工具结果',
+    UNTRUSTED: '待核验',
+  }[level] || '参考资料'
 }
 
 async function copyAssistantMessage(message) {
@@ -691,72 +567,6 @@ async function copyAssistantMessage(message) {
   }
 }
 
-async function regenerateAssistantMessage(message) {
-  if (isSending.value) return
-  const assistantIndex = messages.value.findIndex(item => (item.localId || item.id) === (message.localId || message.id))
-  if (assistantIndex <= 0) return
-  let userMessage = null
-  for (let index = assistantIndex - 1; index >= 0; index -= 1) {
-    if (messages.value[index]?.role === 'user') {
-      userMessage = messages.value[index]
-      break
-    }
-  }
-  if (!userMessage?.content) return
-
-  isSending.value = true
-  errorMessage.value = ''
-  const assistantLocalId = message.localId || `assistant-regenerate-${Date.now()}`
-  replaceMessage(assistantLocalId, {
-    localId: assistantLocalId,
-    role: 'assistant',
-    content: '正在分析...',
-    loading: true,
-    createdAt: new Date().toISOString(),
-    attachments: []
-  })
-
-  const outgoingAttachments = Array.isArray(userMessage.attachments)
-    ? userMessage.attachments.map(toPayload).filter(item => String(item.contentText || '').trim())
-    : []
-
-  try {
-    const response = await conversationApi.chat({
-      sessionId: currentSessionId.value,
-      model: selectedModel.value,
-      message: userMessage.content,
-      attachments: outgoingAttachments
-    })
-    if (response?.status === false || response?.data?.success === false) {
-      throw new Error(response?.data?.errorCode || response?.message || 'AI_PROVIDER_ERROR')
-    }
-    const payload = response?.data
-    currentSessionId.value = payload?.sessionId || currentSessionId.value
-    replaceMessage(assistantLocalId, {
-      id: payload?.messageId,
-      localId: assistantLocalId,
-      role: 'assistant',
-      content: payload?.content || '生成失败，请重试',
-      modelUsed: payload?.modelUsed || selectedModel.value,
-      requestedModel: payload?.requestedModel,
-      createdAt: payload?.createdAt || new Date().toISOString(),
-      attachments: []
-    })
-    await loadSessions()
-  } catch {
-    replaceMessage(assistantLocalId, {
-      localId: assistantLocalId,
-      role: 'assistant',
-      content: '生成失败，请重试',
-      modelUsed: selectedModel.value,
-      createdAt: new Date().toISOString(),
-      attachments: []
-    })
-  } finally {
-    isSending.value = false
-  }
-}
-
 function replaceMessage(localId, nextMessage) {
   const index = messages.value.findIndex(item => (item.localId || item.id) === localId)
   if (index >= 0) {
@@ -772,42 +582,6 @@ function handleInputKeydown(event) {
   sendMessage()
 }
 
-function openLocalFilePicker() {
-  attachmentMenuOpen.value = false
-  localFileInput.value?.click()
-}
-
-async function handleLocalFile(event) {
-  const file = event.target.files?.[0]
-  event.target.value = ''
-  if (!file) return
-  if (file.size > 10 * 1024 * 1024) {
-    errorMessage.value = '附件不能超过 10MB'
-    return
-  }
-  try {
-    const extension = file.name.split('.').pop()?.toLowerCase() || ''
-    let parsed
-    if (extension === 'txt' || extension === 'sol') {
-      parsed = { fileName: file.name, fileType: extension, contentText: await file.text() }
-    } else {
-      const formData = new FormData()
-      formData.append('file', file)
-      const response = await conversationApi.parseAttachment(formData)
-      parsed = response?.data
-    }
-    if (!parsed?.contentText) throw new Error('parse failed')
-    addAttachment({
-      fileName: parsed.fileName || file.name,
-      fileType: parsed.fileType || extension,
-      sourceType: 'local',
-      contentText: parsed.contentText
-    })
-  } catch {
-    errorMessage.value = '附件解析失败'
-  }
-}
-
 async function openContractPicker() {
   attachmentMenuOpen.value = false
   pickerType.value = 'contract'
@@ -819,13 +593,6 @@ async function openContractPicker() {
   } catch {
     contractOptions.value = []
   }
-}
-
-function openWorkspacePicker() {
-  attachmentMenuOpen.value = false
-  pickerType.value = 'workspace'
-  workspaceOptions.value = readWorkspaceFiles()
-  pickerOpen.value = true
 }
 
 function closePicker() {
@@ -859,7 +626,6 @@ async function attachContract(item) {
 
 async function consumeAgentRouteContext() {
   if (String(route.query.agent || '') !== '1') return
-  conversationMode.value = 'agent'
   const prompt = String(route.query.prompt || '').trim()
   if (prompt) inputText.value = prompt.slice(0, 12000)
   const contractId = Number(route.query.contractId)
@@ -884,36 +650,10 @@ async function consumeAgentRouteContext() {
         })
       }
     } catch {
-      errorMessage.value = '无法读取来源合约，仍可直接向 Agent 提问'
+      errorMessage.value = '无法读取来源合约，仍可直接提问'
     }
   }
   router.replace({ path: '/conversation' }).catch(() => {})
-}
-
-function attachWorkspaceFile(file) {
-  const content = String(file.content || '')
-  if (!content.trim()) {
-    errorMessage.value = '附件内容未读取'
-    return
-  }
-  addAttachment({
-    fileName: file.name,
-    fileType: 'sol',
-    sourceType: 'workspace',
-    contentText: content
-  })
-  closePicker()
-}
-
-function readWorkspaceFiles() {
-  try {
-    const parsed = JSON.parse(localStorage.getItem(LAB_WORKSPACE_KEY) || '{}')
-    return Array.isArray(parsed.files)
-      ? parsed.files.filter(file => !file.readonly && /\.sol$/i.test(file.name || '') && file.content)
-      : []
-  } catch {
-    return []
-  }
 }
 
 function addAttachment(attachment) {
@@ -934,20 +674,9 @@ function previewAttachment(attachment) {
   attachmentPreview.value = attachmentPreview.value?.localId === attachment.localId ? null : attachment
 }
 
-function toPayload(attachment) {
-  return {
-    fileName: attachment.fileName,
-    fileType: attachment.fileType,
-    sourceType: attachment.sourceType,
-    contentText: String(attachment.contentText || '')
-  }
-}
-
 function sourceTypeLabel(type) {
   return {
-    contract: '合约库',
-    workspace: '工作台',
-    local: '本地文件'
+    contract: '合约库'
   }[type] || '附件'
 }
 
@@ -1011,31 +740,10 @@ function scrollToBottom() {
   gap: 12px;
 }
 
-.conversation-mode-switch {
-  display: inline-flex;
-  align-items: center;
-  padding: 3px;
-  border: 1px solid #e1e5eb;
-  border-radius: 11px;
-  background: #f5f7fa;
-}
-
-.conversation-mode-switch button {
-  height: 28px;
-  padding: 0 11px;
-  border: 0;
-  border-radius: 8px;
-  background: transparent;
+.assistant-status {
   color: #667085;
-  font-size: 13px;
-  font-weight: 750;
-  cursor: pointer;
-}
-
-.conversation-mode-switch button.active {
-  background: #111827;
-  color: #fff;
-  box-shadow: 0 2px 7px rgba(15, 23, 42, 0.16);
+  font-size: 12px;
+  font-weight: 650;
 }
 
 .new-chat-button {
@@ -1219,136 +927,89 @@ function scrollToBottom() {
   color: #98a2b3;
 }
 
-.model-used {
-  margin: 10px 0 0;
-  color: #98a2b3;
-  font-size: 12px;
+.activity-stream {
+  margin-bottom: 14px;
 }
 
-.agent-run-card {
-  margin-top: 14px;
-  padding: 13px;
-  border: 1px solid #dfe5ec;
-  border-radius: 13px;
-  background: #f8fafc;
-}
-
-.agent-run-card--failed {
-  border-color: #f0c7c3;
-  background: #fff8f7;
-}
-
-.agent-run-head,
-.agent-run-head > div,
-.agent-evidence article > div {
-  display: flex;
-  align-items: center;
-}
-
-.agent-run-head {
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.agent-run-head > div {
-  align-items: flex-start;
-  flex-direction: column;
-  gap: 3px;
-}
-
-.agent-run-head strong {
-  color: #111827;
-  font-size: 14px;
-}
-
-.agent-run-head span,
-.agent-run-head code {
-  color: #667085;
-  font-size: 12px;
-}
-
-.agent-step-list {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 7px;
-  margin: 12px 0 0;
+.activity-stream ol {
+  margin: 0;
   padding: 0;
   list-style: none;
 }
 
-.agent-step-list li {
-  padding: 8px 9px;
-  border: 1px solid #e5e9ef;
-  border-radius: 9px;
-  background: #fff;
-}
-
-.agent-step-list span,
-.agent-step-list small {
-  display: block;
-}
-
-.agent-step-list li.agent-step--running {
-  border-color: #b8cef8;
-  background: #f5f8ff;
-}
-
-.agent-step-list li.agent-step--running small {
-  color: #3569c8;
-}
-
-.agent-step-list li.agent-step--failed small {
-  color: #d04438;
-}
-
-.agent-step-list p {
-  margin: 5px 0 0;
+.activity-stream li {
+  min-height: 26px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
   color: #667085;
-  font-size: 11px;
-  line-height: 1.45;
+  font-size: 13px;
 }
 
-.agent-step-list span {
-  color: #344054;
-  font-size: 12px;
-  font-weight: 700;
+.activity-stream li i {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 7px;
+  border-radius: 50%;
+  background: #98a2b3;
 }
 
-.agent-step-list small {
-  margin-top: 2px;
-  color: #12a56a;
-  font-size: 11px;
+.activity-stream li.activity-line--running {
+  color: #245db5;
+  font-weight: 650;
 }
 
-.agent-evidence {
-  margin-top: 11px;
+.activity-stream li.activity-line--running i {
+  background: #3976d5;
+  box-shadow: 0 0 0 4px rgba(57, 118, 213, 0.12);
+  animation: activity-pulse 1.15s ease-in-out infinite;
 }
 
-.agent-evidence summary {
+.activity-stream li.activity-line--failed {
+  color: #c63f35;
+}
+
+.activity-stream li.activity-line--failed i {
+  background: #d64a40;
+}
+
+@keyframes activity-pulse {
+  50% { opacity: 0.45; transform: scale(0.82); }
+}
+
+.answer-sources {
+  margin-top: 14px;
+  padding-top: 11px;
+  border-top: 1px solid #eef1f5;
+}
+
+.answer-sources summary {
   color: #475467;
   font-size: 12px;
   font-weight: 750;
   cursor: pointer;
 }
 
-.agent-evidence article {
+.answer-sources article {
   margin-top: 8px;
   padding: 9px;
   border-radius: 9px;
-  background: #fff;
+  background: #f8fafc;
 }
 
-.agent-evidence article > div {
+.answer-sources article > div {
+  display: flex;
+  align-items: center;
   justify-content: space-between;
   gap: 10px;
 }
 
-.agent-evidence article strong {
+.answer-sources article strong {
   color: #344054;
   font-size: 12px;
 }
 
-.agent-evidence article p {
+.answer-sources article p {
   margin: 5px 0;
   color: #667085;
   font-size: 12px;
@@ -1356,9 +1017,10 @@ function scrollToBottom() {
   white-space: pre-wrap;
 }
 
-.agent-evidence article code {
+.answer-sources article small {
   color: #98a2b3;
   font-size: 10px;
+  word-break: break-all;
 }
 
 .trust-badge {
@@ -1374,18 +1036,6 @@ function scrollToBottom() {
 .trust-badge--verified {
   background: #e8f8f1;
   color: #087a50;
-}
-
-.agent-fallback {
-  margin-top: 10px;
-  height: 32px;
-  padding: 0 10px;
-  border: 1px solid #d0d5dd;
-  border-radius: 9px;
-  background: #fff;
-  color: #344054;
-  font-weight: 700;
-  cursor: pointer;
 }
 
 .message-actions {
@@ -1582,15 +1232,6 @@ textarea:focus {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-}
-
-.model-inline {
-  margin-left: auto;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  color: #667085;
-  font-size: 14px;
 }
 
 .agent-model-inline {
@@ -1868,14 +1509,6 @@ textarea:focus {
 
   .conversation-shell {
     height: 100%;
-  }
-
-  .model-inline {
-    margin-left: 0;
-  }
-
-  .conversation-mode-switch {
-    order: 3;
   }
 
   .conversation-card-head {
