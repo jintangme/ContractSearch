@@ -1,7 +1,7 @@
 # Delivery Stage 3 Report: Iterative Agent Answer Loop
 
-> Status: READY_FOR_SMOKE  
-> Next: restart updated services, run one real GLM smoke, then Delivery Stage 4  
+> Status: COMPLETE
+> Next: Delivery Stage 4 — Existing AI Chat Integration & Delivery
 > Date: 2026-08-09
 
 ## Outcome
@@ -29,7 +29,8 @@ The fixed Tool allowlist is `retrieve_knowledge.v1`, `search_contracts.v1`, `get
 - V6 was applied successfully to the local PostgreSQL/ParadeDB schema.
 - Persistence smoke run `090badaf-b12c-475f-b42d-81d96072eaaa` archived a COMPLETE run with prompt version `delivery-stage3-supervisor-v2`, 5 events, 1 Evidence item, and 1 proposal.
 - No paid GLM smoke was made from this shell because `ZHIPU_API_KEY` is not exported in the current Codex process. The existing processes were not terminated by this stage; the final health recheck found ports 18081, 18082, 19090, and 18083 no longer listening, so the local backend stack must be started before manual smoke.
-- The first owner-run live smoke proved four observation/redecision cycles and collected 8 Evidence items, but attempted Knowledge retrieval as a fifth Tool and ended with `BUDGET_EXCEEDED`. The default was therefore raised to 5 bounded Tool calls, retrieval tools are hidden after their own budget is exhausted, and a terminal-only final turn was added. The focused regression for this correction passed 12 tests with 0 failures; one Agent restart and one repeat of the same smoke remain.
+- The first owner-run live smoke proved four observation/redecision cycles and collected 8 Evidence items, but attempted Knowledge retrieval as a fifth Tool and ended with `BUDGET_EXCEEDED`. The default was therefore raised to 5 bounded Tool calls, retrieval tools are hidden after their own budget is exhausted, and a terminal-only final turn was added. The focused regression for this correction passed 12 tests with 0 failures.
+- The repeated owner-run live smoke `bd4c003c-c641-4ac4-a8a2-a41e3e1c9685` completed with `glm-4.5-air`: 6 model steps, 5 Tool calls, 2 retrieval rounds, and 15 Evidence items. The final answer cited four current-run Evidence IDs. A direct PostgreSQL audit check confirmed `COMPLETE`, prompt version `delivery-stage3-supervisor-v3`, 15 Evidence rows, and 19 ordered event rows. This closes the Stage 3 Exit Gate.
 
 ## Manual test checklist
 
