@@ -17,6 +17,7 @@ import org.scse.cloudagent.tool.InvalidToolArgumentsException;
 import org.scse.cloudagent.tool.MiniLoopToolPolicy;
 import org.scse.cloudagent.tool.ToolExecutionContext;
 import org.scse.cloudagent.tool.ToolExecutionResult;
+import org.scse.cloudagent.tool.ToolDefinition;
 import org.scse.cloudagent.tool.ToolInvocationValidator;
 import org.scse.cloudagent.tool.ToolRegistry;
 import org.scse.cloudagent.tool.UnknownToolException;
@@ -66,14 +67,16 @@ public class MiniAgentLoopEngine {
         try {
             while (context.steps < properties.miniLoop().maxSteps()) {
                 context.steps++;
+                int remainingToolCalls = properties.miniLoop().maxToolCalls() - context.toolCalls;
+                int remainingRetrievalRounds = properties.miniLoop().maxRetrievalRounds() - context.retrievalRounds;
                 AgentDecision decision = provider.decide(new AgentDecisionRequest(
                         task,
                         context.observations,
                         context.evidence,
-                        toolRegistry.availableDefinitions(MiniLoopToolPolicy.ALLOWED_TOOLS),
+                        availableTools(remainingToolCalls, remainingRetrievalRounds),
                         context.steps,
-                        properties.miniLoop().maxToolCalls() - context.toolCalls,
-                        properties.miniLoop().maxRetrievalRounds() - context.retrievalRounds
+                        remainingToolCalls,
+                        remainingRetrievalRounds
                 ));
                 Map<String, Object> modelAction = new LinkedHashMap<>();
                 modelAction.put("step", context.steps);
@@ -100,6 +103,15 @@ public class MiniAgentLoopEngine {
         } catch (RuntimeException exception) {
             return fail(context, AgentErrorCode.INTERNAL_ERROR, "Agent loop failed: " + exception.getClass().getSimpleName());
         }
+    }
+
+    private List<ToolDefinition> availableTools(int remainingToolCalls, int remainingRetrievalRounds) {
+        if (remainingToolCalls <= 0) return List.of();
+        return toolRegistry.availableDefinitions(MiniLoopToolPolicy.ALLOWED_TOOLS).stream()
+                .filter(tool -> remainingRetrievalRounds > 0
+                        || (!("search_contracts.v1".equals(tool.name()))
+                        && !("retrieve_knowledge.v1".equals(tool.name()))))
+                .toList();
     }
 
     private void executeTool(Context context, UUID runId, long userId, AgentDecision decision) {

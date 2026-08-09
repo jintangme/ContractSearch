@@ -95,6 +95,28 @@ class MiniAgentLoopEngineTest {
         assertThat(result.errorCode()).isEqualTo(AgentErrorCode.PROVIDER_ERROR);
     }
 
+    @Test
+    void givesTheModelATerminalOnlyTurnAfterToolBudgetIsConsumed() {
+        List<AgentDecisionRequest> requests = new ArrayList<>();
+        StructuredActionProvider provider = request -> {
+            requests.add(request);
+            if (!request.tools().isEmpty()) {
+                return AgentDecision.toolCall("get_contract.v1", "{\"contractId\":1}", "get");
+            }
+            return AgentDecision.finalAnswer("The available contract evidence is sufficient.",
+                    request.evidence().stream().map(item -> item.id()).toList(), "final");
+        };
+
+        MiniLoopResult result = engine(provider, new AgentProperties.MiniLoop(true, 3, 1, 1))
+                .execute(UUID.randomUUID(), 7, "Read one contract and answer");
+
+        assertThat(result.state()).isEqualTo(AgentRunState.COMPLETE);
+        assertThat(result.toolCalls()).isEqualTo(1);
+        assertThat(requests).hasSize(2);
+        assertThat(requests.get(1).remainingToolCalls()).isZero();
+        assertThat(requests.get(1).tools()).isEmpty();
+    }
+
     private MiniAgentLoopEngine engine(StructuredActionProvider provider, AgentProperties.MiniLoop budget) {
         ToolRegistry registry = new ToolRegistry(List.of(
                 new StubTool("search_contracts.v1", SideEffect.READ),

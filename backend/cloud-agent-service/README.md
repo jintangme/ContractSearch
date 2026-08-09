@@ -76,7 +76,7 @@ NACOS_DISCOVERY_ENABLED=false \
 mvn -pl cloud-agent-service spring-boot:run
 ```
 
-The loop is capped at 6 model steps, 4 Tool calls and 2 retrieval rounds. Its allowlist is:
+The loop is capped at 6 model steps, 5 Tool calls and 2 retrieval rounds. When the Tool budget is exhausted, the final model turn receives no Tool definitions and must complete with current Evidence or abstain. Its allowlist is:
 
 - `retrieve_knowledge.v1`
 - `search_contracts.v1`

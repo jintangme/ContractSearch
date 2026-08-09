@@ -22,7 +22,7 @@ public record AgentProperties(
                 ? new Provider("https://open.bigmodel.cn/api/paas/v4", "", 60000, false)
                 : provider;
         migrations = migrations == null ? new Migrations(false, "", "", "") : migrations;
-        miniLoop = miniLoop == null ? new MiniLoop(false, 6, 4, 2) : miniLoop;
+        miniLoop = miniLoop == null ? new MiniLoop(false, 6, 5, 2) : miniLoop;
         dependencies = dependencies == null
                 ? new Dependencies("http://127.0.0.1:18081", "http://127.0.0.1:19090", 15000, 45000)
                 : dependencies;
@@ -68,7 +68,7 @@ public record AgentProperties(
     public record MiniLoop(boolean enabled, int maxSteps, int maxToolCalls, int maxRetrievalRounds) {
         public MiniLoop {
             maxSteps = maxSteps <= 0 ? 6 : Math.min(maxSteps, 6);
-            maxToolCalls = maxToolCalls <= 0 ? 4 : Math.min(maxToolCalls, 4);
+            maxToolCalls = maxToolCalls <= 0 ? 5 : Math.min(maxToolCalls, 5);
             maxRetrievalRounds = maxRetrievalRounds <= 0 ? 2 : Math.min(maxRetrievalRounds, 2);
         }
     }

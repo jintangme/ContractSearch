@@ -10,6 +10,7 @@ import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpRequest;
 import java.time.Duration;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -46,16 +47,18 @@ public class GlmStructuredActionClient {
     }
 
     Map<String, Object> buildPayload(String systemPrompt, String userPrompt, List<ToolDefinition> tools) {
-        return Map.of(
-                "model", properties.model(),
-                "messages", List.of(
-                        Map.of("role", "system", "content", systemPrompt),
-                        Map.of("role", "user", "content", userPrompt)),
-                "tools", tools.stream().map(this::toProviderTool).toList(),
-                "tool_choice", "auto",
-                "temperature", 0.1,
-                "thinking", Map.of("type", properties.provider().thinkingEnabled() ? "enabled" : "disabled")
-        );
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("model", properties.model());
+        payload.put("messages", List.of(
+                Map.of("role", "system", "content", systemPrompt),
+                Map.of("role", "user", "content", userPrompt)));
+        if (!tools.isEmpty()) {
+            payload.put("tools", tools.stream().map(this::toProviderTool).toList());
+            payload.put("tool_choice", "auto");
+        }
+        payload.put("temperature", 0.1);
+        payload.put("thinking", Map.of("type", properties.provider().thinkingEnabled() ? "enabled" : "disabled"));
+        return Map.copyOf(payload);
     }
 
     private Map<String, Object> toProviderTool(ToolDefinition definition) {

@@ -15,6 +15,7 @@ The fixed Tool allowlist is `retrieve_knowledge.v1`, `search_contracts.v1`, `get
 - Supervisor decisions now contain auditable `reasonSummary`, `evidenceGap`, `citedEvidenceIds`, and `stopReason`; raw model output and private chain-of-thought are not persisted.
 - The model is called again after each Tool observation. Identical Tool + arguments repetition is rejected with `LOOP_DETECTED`.
 - `COMPLETE` requires real Evidence IDs from the current run. `ABSTAIN` is an explicit successful terminal state for insufficient evidence.
+- The default Tool budget is 5 so one task can Search/Retrieve, Get, Compile, and Precheck. Once exhausted, the next model turn is terminal-only and must answer from existing Evidence or abstain instead of discarding a useful run as `BUDGET_EXCEEDED`.
 - `precheck_contract.v1` reads the selected contract and calls the existing precheck service with `saveRecord=false`; Agent-internal checks do not create user precheck-history records.
 - V6 additively extends Agent audit fields and indexes. Terminal sessions, runs, events, Evidence, and proposals can be persisted transactionally when `AGENT_PERSISTENCE_ENABLED=true`.
 - Persistence remains default-off and validates its database URL/username before startup.
@@ -28,6 +29,7 @@ The fixed Tool allowlist is `retrieve_knowledge.v1`, `search_contracts.v1`, `get
 - V6 was applied successfully to the local PostgreSQL/ParadeDB schema.
 - Persistence smoke run `090badaf-b12c-475f-b42d-81d96072eaaa` archived a COMPLETE run with prompt version `delivery-stage3-supervisor-v2`, 5 events, 1 Evidence item, and 1 proposal.
 - No paid GLM smoke was made from this shell because `ZHIPU_API_KEY` is not exported in the current Codex process. The existing processes were not terminated by this stage; the final health recheck found ports 18081, 18082, 19090, and 18083 no longer listening, so the local backend stack must be started before manual smoke.
+- The first owner-run live smoke proved four observation/redecision cycles and collected 8 Evidence items, but attempted Knowledge retrieval as a fifth Tool and ended with `BUDGET_EXCEEDED`. The default was therefore raised to 5 bounded Tool calls, retrieval tools are hidden after their own budget is exhausted, and a terminal-only final turn was added. The focused regression for this correction passed 12 tests with 0 failures; one Agent restart and one repeat of the same smoke remain.
 
 ## Manual test checklist
 

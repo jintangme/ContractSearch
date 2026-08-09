@@ -36,7 +36,7 @@ agent:
   mini-loop:
     enabled: ${AGENT_MINI_LOOP_ENABLED:false}
     max-steps: ${AGENT_MAX_STEPS:6}
-    max-tool-calls: ${AGENT_MAX_TOOL_CALLS:4}
+    max-tool-calls: ${AGENT_MAX_TOOL_CALLS:5}
     max-retrieval-rounds: ${AGENT_MAX_RETRIEVAL_ROUNDS:2}
   dependencies:
     contract-service-base-url: ${AGENT_CONTRACT_SERVICE_URL:http://127.0.0.1:18081}

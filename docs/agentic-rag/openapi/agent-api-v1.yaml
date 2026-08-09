@@ -192,7 +192,7 @@ components:
           enum: [AGENT_DISABLED, UNAUTHORIZED, RUN_NOT_FOUND, RUN_NOT_OWNED, INVALID_STATE_TRANSITION, UNKNOWN_TOOL, INVALID_TOOL_ARGUMENTS, TOOL_TIMEOUT, TOOL_POLICY_DENIED, PROVIDER_ERROR, BUDGET_EXCEEDED, INTERNAL_ERROR, null]
         failureMessage: {type: [string, 'null']}
         steps: {type: integer, minimum: 0, maximum: 6}
-        toolCalls: {type: integer, minimum: 0, maximum: 4}
+        toolCalls: {type: integer, minimum: 0, maximum: 5}
         retrievalRounds: {type: integer, minimum: 0, maximum: 2}
         createdAt: {type: string, format: date-time}
         updatedAt: {type: string, format: date-time}

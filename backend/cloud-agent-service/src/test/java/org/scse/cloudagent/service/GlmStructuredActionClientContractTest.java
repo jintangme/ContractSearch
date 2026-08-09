@@ -6,11 +6,29 @@ import org.scse.cloudagent.config.AgentProperties;
 import org.scse.cloudagent.tool.MockEchoTool;
 
 import java.net.http.HttpRequest;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 class GlmStructuredActionClientContractTest {
+    @Test
+    void omitsToolFieldsForATerminalOnlyCompletion() {
+        AgentProperties properties = new AgentProperties(
+                true,
+                "phase-one-test-token-1234567890",
+                "glm-4.5-air",
+                new AgentProperties.Provider("http://provider.invalid", "test-key", 2000, false),
+                new AgentProperties.Migrations(false, "", "", "")
+        );
+        GlmStructuredActionClient client = new GlmStructuredActionClient(
+                new ObjectMapper(), properties, request -> new GlmHttpTransport.Response(200, "{}"));
+
+        Map<String, Object> payload = client.buildPayload("system", "answer now", java.util.List.of());
+
+        assertThat(payload).doesNotContainKeys("tools", "tool_choice");
+    }
+
     @Test
     void sendsOpenAiCompatibleToolContractAndParsesToolCall() throws Exception {
         AtomicReference<HttpRequest> capturedRequest = new AtomicReference<>();
