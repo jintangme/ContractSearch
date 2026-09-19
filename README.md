@@ -153,21 +153,6 @@ Bounds and guardrails:
 
 ---
 
-## Screenshots
-
-No product screenshots are committed yet. Add 3-5 images under
-`docs/screenshots/` and reference them here. Recommended set:
-
-1. Contract browse / repository view
-2. Hybrid search and result cards
-3. AI conversation showing streamed agent activity and expandable sources
-4. Contract detail with source and ABI
-5. Security precheck or Contract Lab
-
-Do not add mockups in place of real UI captures.
-
----
-
 ## Project Structure
 
 ```text
