@@ -281,8 +281,8 @@ delivery reports in `docs/agentic-rag/reports/`. Examples include single-file
 compilation in the runtime service and a reserved (not yet active) standalone
 auth/user module.
 
-Development notes and the full delivery plan are in
-`docs/implementation-plan.zh-CN.md` (Chinese). Deployment instructions are in
+Development notes and the full delivery plan are kept outside the public
+repository. Deployment instructions are in
 `docs/deployment-guide.zh-CN.md` (Chinese).
 
 ---
@@ -296,19 +296,15 @@ Development notes and the full delivery plan are in
   versions, and content hashes in `docs/agentic-rag/knowledge-sources-v1.json`.
   Their upstream licenses (for example OpenZeppelin MIT, OWASP content) apply to
   the sourced content, not to this repository's code.
-- No open-source license has been added to this repository yet, pending
-  confirmation of team and institutional ownership. Until then, all rights are
-  reserved by the authors.
+- No open-source license has been added to this repository yet, pending a final
+  ownership and licensing decision. Until then, all rights are reserved by the
+  author.
 
 ---
 
-## Contributors
+## Author
 
-This project was developed as a team competition project. The Git history in
-this repository is maintained under a single author account, which does not
-fully reflect individual contributions.
-
-<!-- TODO: list team members and their contribution areas before publishing. -->
+Developed and maintained by Tang Jin.
 
 ---
 
