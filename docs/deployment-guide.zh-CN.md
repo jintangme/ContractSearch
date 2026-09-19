@@ -50,7 +50,6 @@ database/                 基础合约库 SQL
 backups/                  已验证的数据库恢复点
 docs/agentic-rag/         架构、迁移、知识库和评测文档
 scripts/agentic-rag/      知识同步、探针和评测脚本
-docs/implementation-plan.zh-CN.md   Agentic RAG 实施记录（中文）
 ```
 
 ## 3. 端口与在线依赖
