@@ -14,12 +14,15 @@
 !**/.env.example
 *.pem
 *.key
+*.p12
+*.jks
 *.zip
 
-# Java
+# Java / Maven
 **/target/
 *.log
 backend/cloud-service/data/
+backend/**/data/
 
 # Node / frontend
 **/node_modules/
@@ -35,11 +38,24 @@ backend/cloud-service/data/
 scse-discover/data/
 scse-discover/nacos-data/
 scse-discover/*.parquet
+scse-discover/*.txt
 
-# Local database seed/dumps are 100+ MB and cannot be pushed to common Git hosts.
+# Local database seed/dumps and backups are large or may contain
+# third-party / licensed data. They must never be pushed.
 database/*.sql
-backups/*.dump
+database/*.dump
+backups/
+*.dump
+*.sql.gz
 
 # Lean build/cache
 **/.lake/
 **/lake-packages/
+
+# Local runtime artifacts
+*.pid
+*.trace
+tmp/
+
+# Internal competition material (not for public release)
+docs/竞赛答辩PPT详细文案.md

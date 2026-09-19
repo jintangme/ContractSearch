@@ -17,7 +17,7 @@ The Git and application root is `计算机设计大赛2.0/`. All runnable compon
 ├── database/                   local ignored database seed
 ├── docs/                       architecture and runbooks
 ├── scripts/                    controlled project scripts
-└── plan.md
+└── docs/implementation-plan.zh-CN.md
 ```
 
 The user approved `计算机设计大赛2.0/` as the Git root. A sanitized baseline repository is created at this root; local dumps, archives, credentials, generated data, dependencies and build output are excluded.
