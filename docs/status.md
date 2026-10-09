@@ -19,8 +19,10 @@ See [validation commands and results](evaluation/README.md). Test reports,
 raw logs, account credentials and browser state remain local. Screenshots show
 only the synthetic demo.
 
-CI configuration is included; a workflow file is not itself proof of a
-successful GitHub Actions run. Check the workflow status for the relevant commit.
+The first published GitHub Actions run passed all seven jobs, including the
+complete Docker demonstration. See the [dated CI record](evaluation/README.md)
+for its exact commit and run link; check the README's live workflow badge for
+subsequent commits.
 
 ## Remaining limitations
 

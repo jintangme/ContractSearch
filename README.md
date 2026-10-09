@@ -1,5 +1,7 @@
 # ContractSearch
 
+[![Build and verify](https://github.com/jintangme/ContractSearch/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/jintangme/ContractSearch/actions/workflows/ci.yml)
+
 **An evidence-driven workspace for finding, understanding, and experimenting with Solidity contracts.**
 
 [中文说明](README.zh-CN.md) · [Quick start](docs/development/quickstart.md) · [Architecture](docs/architecture/overview.md) · [Validation](docs/evaluation/README.md) · [Third-party notices](THIRD_PARTY_NOTICES.md)

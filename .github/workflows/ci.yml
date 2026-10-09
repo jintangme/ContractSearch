@@ -7,12 +7,15 @@ permissions:
 
 jobs:
   source:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-python@v7.0.0
         with:
           python-version: '3.11'
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: '22'
       - run: python3 scripts/check-public-content.py
       - run: python3 scripts/check-doc-links.py
       - run: python3 -m unittest discover -s scripts/tests -v
@@ -20,10 +23,10 @@ jobs:
       - run: node scripts/agentic-rag/run-eval.mjs --check
 
   java:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-java@v6.0.1
         with:
           distribution: temurin
           java-version: '17'
@@ -31,13 +34,13 @@ jobs:
       - run: mvn -B -ntp -f backend/pom.xml test
 
   javascript:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       matrix:
         directory: [frontend, contract-runtime-service, lean-runtime-service]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.1.0
         with:
           node-version: '22'
           cache: npm
@@ -51,10 +54,10 @@ jobs:
         working-directory: frontend
 
   discovery:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-python@v7.0.0
         with:
           python-version: '3.11'
           cache: pip
@@ -64,10 +67,10 @@ jobs:
         working-directory: scse-discover
 
   demo:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-python@v7.0.0
         with:
           python-version: '3.11'
       - run: python3 scripts/configure-demo.py

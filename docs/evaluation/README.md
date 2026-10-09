@@ -1,7 +1,18 @@
 # Validation and evaluation
 
-Validation date: **2026-10-09**. These are engineering checks, not a comparative
-model-quality study.
+Local validation date: **2026-10-09**; first published CI validation:
+**2026-10-10**. These are engineering checks, not a comparative model-quality study.
+
+## Published CI result
+
+[Build and verify run 37965266282](https://github.com/jintangme/ContractSearch/actions/runs/37965266282)
+passed all seven jobs for commit `51393b565b7364504445e0f46b68874ba5cb2351`:
+source/publication checks, Java, frontend, contract runtime, Lean wrapper,
+Discovery, and the complete Docker demonstration. The run installed dependencies
+on fresh GitHub Linux runners and exercised the real basic API smoke workflow.
+It did not invoke paid model services or an installed Lean toolchain.
+
+Subsequent commit results are available from the README's live workflow badge.
 
 ## Repeatable commands
 
@@ -34,7 +45,7 @@ disposable database. See [backend instructions](../development/backend.md).
 | Contract runtime | Three tests pass, including real compilation, deployment, state write/read and session expiry |
 | Lean wrapper | Four tests pass with an injected executor; no real Lean toolchain is claimed |
 | Publication/demo scripts | 29 behavior tests pass, including checked ZIP export; current public-file privacy scan and local documentation links pass |
-| Discovery callback | Three tests pass against the installed Python 3.11 environment; full fresh dependency installation is not claimed |
+| Discovery callback | Three tests pass locally and in CI with a fresh Python 3.11 dependency installation |
 | Basic API workflow | Registration, login, BM25, detail, real compilation and blocked import verified against the local demo |
 | Docker demonstration | All four application images built; Compose database/runtime healthy; the same API smoke passes through Nginx on loopback 8080 |
 | Browser workflow | Actual UI import → compile → local deployment → increment → count returns 1; screenshots use synthetic data |
