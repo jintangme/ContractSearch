@@ -1,63 +1,41 @@
-# 部署指南
+# Discovery deployment
 
-## 架构说明
+Follow the [README setup](README.md) first. This optional collector is deployed
+separately from the public demo; do not expose its port to the internet.
 
-```
-Nacos 配置中心 (localhost:8848)
-  ↓ 配置监听
-Python Service (scse-discover)
-  ↓ 定时任务
-  ↓ 生成 parquet 文件
-  ↓ HTTP 回调
-Spring Service (cloud-service:18080)
-  ↓ 处理合约数据
-```
+1. Start Nacos at `NACOS_SERVER`; publish `scse-discover.yaml` / `DEFAULT_GROUP`
+   using [this schema](NACOS_CONFIG.md). Use your Nacos installation's console
+   address, not the ContractSearch gateway.
+2. Provide `DUNE_API_KEY`, `ETHERSCAN_API_KEY`, and `CONTRACT_IMPORT_TOKEN` through
+   a private environment file or secret store.
+3. Choose a shared output directory. Set `DISCOVERY_DATA_DIR` for the collector
+   and `CONTRACT_IMPORT_ROOT` for `cloud-service` to that same absolute path.
+   Configure the identical import token on the backend.
+4. Set `callback.url` to the internal backend, for example
+   `http://127.0.0.1:18081/api/contracts/process` for processes on one machine.
+   Separate containers use the backend's internal DNS name; `localhost` would
+   refer to the collector itself. The public gateway denies this route.
+5. Run one collector worker:
 
-## 部署步骤
-
-### 1. 启动 Nacos
-
-确保 Nacos 已启动并运行在 `localhost:8848`
-
-### 2. 配置 Nacos
-
-登录 Nacos 控制台 (http://localhost:18080/index.html#)，创建配置：
-- Data ID: `scse-discover.yaml`
-- Group: `DEFAULT_GROUP`
-- 配置内容参考 `NACOS_CONFIG.md`
-
-### 3. 配置 Python 服务
-
-```bash
-cd scse-discover
-cp .env.example .env
-# 编辑 .env 填入实际的 API keys
-```
-
-### 4. 安装依赖
-
-```bash
-pip install -r requirements.txt
-```
-
-### 5. 启动服务
-
-```bash
-# Python 服务
-uvicorn app.main:app --host 0.0.0.0 --port 18000
-
-# Spring 服务
-cd cloud-service
-mvn spring-boot:run
-```
-
-## 验证
-
-1. 检查 Python 服务健康状态：
    ```bash
-   curl http://localhost:18000/health
+   uvicorn app.main:app --host 127.0.0.1 --port 18000
    ```
 
-2. 查看日志确认配置已加载和定时任务已启动
+The Dockerfile listens on `18000` inside the container. Keep it on a private
+network and mount the shared volume at the same absolute path in both containers.
+`.dockerignore` excludes credentials, generated data, virtual environments and
+local caches from the build context.
 
-3. 在 Nacos 控制台修改配置，观察服务日志确认配置已更新
+Verify `/health`, then trigger a batch only after credentials and query access
+are ready. The asynchronous trigger can incur provider usage. Failed callbacks
+leave Parquet files on disk for explicit retry.
+
+Troubleshooting:
+
+- Startup configuration error: check Nacos Data ID, group and required fields.
+- Import `401`/`403`: check matching tokens; use the internal backend.
+- Rejected path: check `CONTRACT_IMPORT_ROOT`, mount paths and `.parquet` suffix.
+- Empty batch: check Dune access and Etherscan source availability.
+
+Keep real `.env`, responses containing credentials, generated batches and Nacos
+snapshots out of repository examples and screenshots.

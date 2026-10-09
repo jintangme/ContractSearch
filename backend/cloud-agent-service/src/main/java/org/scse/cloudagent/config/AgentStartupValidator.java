@@ -37,13 +37,13 @@ public class AgentStartupValidator {
         }
         if (properties.miniLoop().enabled()) {
             validateFixedDependency("AGENT_CONTRACT_SERVICE_URL", properties.dependencies().contractServiceBaseUrl(),
-                    Set.of("127.0.0.1", "localhost", "cloud-service"));
+                    Set.of("127.0.0.1", "localhost", "cloud-service", "service"));
             validateFixedDependency("AGENT_RUNTIME_SERVICE_URL", properties.dependencies().runtimeBaseUrl(),
-                    Set.of("127.0.0.1", "localhost", "contract-runtime-service"));
+                    Set.of("127.0.0.1", "localhost", "contract-runtime-service", "runtime"));
         }
         if (properties.knowledge().enabled()) {
             validateFixedDependency("AGENT_RUNTIME_SERVICE_URL", properties.dependencies().runtimeBaseUrl(),
-                    Set.of("127.0.0.1", "localhost", "contract-runtime-service"));
+                    Set.of("127.0.0.1", "localhost", "contract-runtime-service", "runtime"));
         }
         if (properties.enabled() && properties.miniLoop().enabled() && properties.provider().apiKey().isBlank()) {
             throw new IllegalStateException("ZHIPU_API_KEY is required when AGENT_MINI_LOOP_ENABLED=true");

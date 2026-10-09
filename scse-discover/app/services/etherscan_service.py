@@ -83,7 +83,7 @@ class APIKeyPool:
         with self.lock:
             self.invalid_keys.add(key)
             logger.error(
-                f"API key marked invalid and removed from rotation: {key[:6]}***, "
+                "API key marked invalid and removed from rotation; "
                 f"invalid={len(self.invalid_keys)}, valid={len(self.keys) - len(self.invalid_keys)}"
             )
 
@@ -211,10 +211,10 @@ def get_contract_info(address, max_retries=3, index=None):
                     retry_stats["failed_requests"] += 1
                 retry_stats["total_retries"] += 1
                 wait_time = (2 ** attempt) + random.uniform(0, 0.5)
-                logger.warning(f"{index_str}Exception for {address}: {e}, retrying in {wait_time:.2f}s")
+                logger.warning(f"{index_str}Request failed for {address} ({type(e).__name__}), retrying in {wait_time:.2f}s")
                 time.sleep(wait_time)
                 continue
-            logger.error(f"Exception after retries for {address}: {e}")
+            logger.error(f"Request failed after retries for {address} ({type(e).__name__})")
             return None
 
     logger.error(f"Max retries reached for {address}")

@@ -1,54 +1,37 @@
-# Contract Discovery Service Architecture
+# Discovery architecture
 
-`scse-discover` is a FastAPI service that populates the ContractSearch contract
-repository with real on-chain contracts. It is an offline ingestion utility and
-is not part of the online request path.
+Discovery is an optional offline producer. Online search reads contracts already
+stored by the backend and does not wait for this service.
 
-## Configuration
-
-Runtime settings are read from Nacos. Query definitions, the schedule and the
-callback URL live in the `scse-discover.yaml` Nacos configuration:
-
-```yaml
-dune:
-  queries:
-    - query_name: top100
-      query_id: 6922033
-    - query_name: get_contract_addresses
-      query_id: 6915930
-
-schedule:
-  cron: "0 */6 * * *"
-
-callback:
-  url: "http://localhost:18080/api/contracts/process"
+```text
+Nacos: query IDs + cron + callback URL
+                  |
+          scheduled/manual run
+                  |
+         Dune -> Etherscan
+                  |
+          shared Parquet file
+                  |
+ authenticated callback with file path
+                  |
+     cloud-service :18081 -> database
 ```
 
-API keys are never stored in Nacos or in the repository. They are injected as
-process environment variables (see `.env.example`):
+`app/main.py` loads Nacos configuration and starts APScheduler. `ContractFetchTask`
+fetches addresses and enriches them with a thread pool; `etherscan_service.py`
+limits requests per configured API key and retries selected provider/network
+failures. Classification is heuristic. Output includes name, address, source,
+ABI and optional bytecode.
 
-```dotenv
-DUNE_API_KEY=replace_with_dune_api_key
-ETHERSCAN_API_KEY=replace_with_key_1,replace_with_key_2
-```
+Credentials are environment variables. The callback uses a separate
+`CONTRACT_IMPORT_TOKEN`, shared with `cloud-service`; the backend also requires
+`CONTRACT_IMPORT_ROOT` and resolves submitted paths inside that root.
 
-## Pipeline
+The callback carries a path rather than contents. `DISCOVERY_DATA_DIR` and the
+backend import root must identify the same shared directory, visible at the same
+absolute path. The public gateway denies this import endpoint.
 
-A run can be scheduled by the cron expression or triggered manually. It executes
-three ordered stages:
-
-1. **Dune discovery** - runs each configured Dune query and writes the returned
-   contract addresses to `data/{query_name}_{timestamp}.txt`, one address per
-   line, filtering out empty values.
-2. **Etherscan enrichment** - reads each address file and fetches contract
-   details (`address`, `abi`, `source_code`, `contract_name`, `bytecode`) from
-   the Etherscan v2 API. Because the free tier is limited to 3 QPS per key, the
-   service rotates multiple environment-provided keys, caps each key at 3 QPS and
-   uses a thread pool plus connection pool. Results are stored as
-   `data/{query_name}_info_{timestamp}.parquet`. A missing `bytecode` is
-   tolerated by the rest of the platform.
-3. **Callback** - posts the generated batch to the Spring service
-   (`/api/contracts/process`) for persistence and embedding.
-
-Generated `data/` output and Nacos snapshot data are excluded from version
-control.
+`/health` reports startup, not provider availability or successful ingestion.
+`/trigger` submits background work without awaiting completion. Concurrent manual
+triggers are not a durable queue; use one worker and avoid overlapping manual and
+scheduled runs. There is no automatic callback retry or public API authentication.

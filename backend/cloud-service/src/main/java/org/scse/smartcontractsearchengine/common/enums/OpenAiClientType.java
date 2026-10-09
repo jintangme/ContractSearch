@@ -8,7 +8,7 @@ import lombok.Getter;
 public enum OpenAiClientType {
 
     REMOTE("AliyunEmbeddingClient", "text-embedding-v4"),
-    LOCAL("LocalEmbeddingClient", "/home/chidanta/models/Qwen3-Embedding-4B"),
+    LOCAL("LocalEmbeddingClient", System.getenv().getOrDefault("LOCAL_EMBEDDING_MODEL", "Qwen/Qwen3-Embedding-4B")),
 
     ZHIPU("ZhiPuAIClient", "glm-5.1"),
     ZHIPU_FAST("ZhiPuAIClient", "glm-4.7-flash");

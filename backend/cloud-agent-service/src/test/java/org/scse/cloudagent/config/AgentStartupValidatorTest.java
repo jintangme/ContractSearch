@@ -3,8 +3,17 @@ package org.scse.cloudagent.config;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.assertThatCode;
 
 class AgentStartupValidatorTest {
+    @Test
+    void acceptsFixedComposeServiceAliases() {
+        AgentProperties properties = properties(
+                new AgentProperties.Provider("https://open.bigmodel.cn/api/paas/v4", "test-key", 1000, false),
+                new AgentProperties.Dependencies("http://service:18081", "http://runtime:19090", 1000, 1000));
+        assertThatCode(() -> validator(properties).validate()).doesNotThrowAnyException();
+    }
+
     @Test
     void refusesEnabledKnowledgeApiWithoutTrustedToken() {
         AgentProperties properties = new AgentProperties(false, "", "glm-4.5-air",

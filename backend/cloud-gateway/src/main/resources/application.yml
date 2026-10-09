@@ -4,9 +4,11 @@ spring:
   cloud:
     nacos:
       server-addr: ${NACOS_SERVER_ADDR:127.0.0.1:8848}
+      config:
+        enabled: ${NACOS_CONFIG_ENABLED:false}
       discovery:
         server-addr: ${spring.cloud.nacos.server-addr}
-        enabled: ${NACOS_DISCOVERY_ENABLED:true}
+        enabled: ${NACOS_DISCOVERY_ENABLED:false}
     gateway:
       globalcors:
         cors-configurations:
@@ -22,7 +24,7 @@ spring:
             allowCredentials: true
       routes:
         - id: smart-contract-search-engine-api
-          uri: ${CONTRACT_SERVICE_GATEWAY_URI:lb://smart-contract-search-engine}
+          uri: ${CONTRACT_SERVICE_GATEWAY_URI:http://127.0.0.1:18081}
           predicates:
             - Path=/api/**
   config:
@@ -40,4 +42,5 @@ agent:
     uri: ${AGENT_SERVICE_GATEWAY_URI:lb://cloud-agent-service}
 
 server:
+  address: ${GATEWAY_HOST:127.0.0.1}
   port: 18080

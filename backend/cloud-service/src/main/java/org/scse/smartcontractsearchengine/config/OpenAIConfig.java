@@ -20,7 +20,7 @@ public class OpenAIConfig {
     public OpenAIClient localEmbeddingClient() {
         return OpenAIOkHttpClient.builder()
                 .apiKey("EMPTY")
-                .baseUrl("http://localhost:8000/v1/")
+                .baseUrl(System.getenv().getOrDefault("LOCAL_EMBEDDING_BASE_URL", "http://127.0.0.1:8000/v1/"))
                 .build();
     }
 

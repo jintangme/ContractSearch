@@ -4,14 +4,17 @@ spring:
   cloud:
     nacos:
       server-addr: ${NACOS_SERVER_ADDR:127.0.0.1:8848}
+      config:
+        enabled: ${NACOS_CONFIG_ENABLED:false}
       discovery:
         server-addr: ${spring.cloud.nacos.server-addr}
-        enabled: ${NACOS_DISCOVERY_ENABLED:true}
+        enabled: ${NACOS_DISCOVERY_ENABLED:false}
   config:
     import:
       - optional:nacos:nacos-config-example.properties?refreshEnabled=true
 
 server:
+  address: ${AGENT_SERVICE_HOST:127.0.0.1}
   port: ${AGENT_SERVICE_PORT:18082}
 
 agent:

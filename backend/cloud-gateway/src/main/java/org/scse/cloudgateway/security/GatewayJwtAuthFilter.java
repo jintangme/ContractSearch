@@ -29,7 +29,19 @@ public class GatewayJwtAuthFilter implements GlobalFilter, Ordered {
 
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
+        // Identity is established only from a validated JWT, including on public routes.
+        ServerHttpRequest sanitizedRequest = exchange.getRequest().mutate()
+                .headers(headers -> {
+                    headers.remove(USER_ID_HEADER);
+                    headers.remove("X-Agent-Internal-Token");
+                    headers.remove("X-Contract-Import-Token");
+                }).build();
+        exchange = exchange.mutate().request(sanitizedRequest).build();
         String path = exchange.getRequest().getURI().getPath();
+        if (path.startsWith("/api/contracts/process")) {
+            exchange.getResponse().setStatusCode(HttpStatus.FORBIDDEN);
+            return exchange.getResponse().setComplete();
+        }
         HttpMethod method = exchange.getRequest().getMethod();
         boolean isPublic = isPublicPath(path, method);
 
@@ -100,9 +112,6 @@ public class GatewayJwtAuthFilter implements GlobalFilter, Ordered {
                 || path.startsWith("/swagger-ui")
                 || path.equals("/swagger-ui.html")
                 || path.equals("/error")) {
-            return true;
-        }
-        if (path.equals("/api/contracts/process")) {
             return true;
         }
         if (method == HttpMethod.POST && path.equals("/api/ai/chat")) {

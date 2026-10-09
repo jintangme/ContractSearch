@@ -58,7 +58,8 @@ public class SecurityConfig {
                         ).permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/contracts/check").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/ai/chat").permitAll()
-                        .requestMatchers("/api/contracts/process").permitAll()
+                        // This offline callback authenticates its own dedicated token before reading any file.
+                        .requestMatchers(HttpMethod.POST, "/api/contracts/process").permitAll()
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(gatewayUserContextFilter, UsernamePasswordAuthenticationFilter.class);

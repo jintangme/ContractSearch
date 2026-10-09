@@ -2,6 +2,7 @@ import pandas as pd
 import os
 import logging
 import time
+from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from app.services.dune_service import fetch_contracts_by_query
@@ -81,8 +82,12 @@ class ContractFetchTask:
                 logger.warning(f"[{query_name}] No valid addresses, skipping")
                 return
 
-            os.makedirs("data", exist_ok=True)
-            address_file = f"data/{query_name}_{timestamp}.txt"
+            data_dir = Path(os.getenv("DISCOVERY_DATA_DIR", "data")).resolve()
+            data_dir.mkdir(parents=True, exist_ok=True)
+            # Query names come from trusted configuration but must remain file names.
+            if not query_name or any(char not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-" for char in query_name):
+                raise ValueError("query_name must contain only letters, digits, underscore or hyphen")
+            address_file = data_dir / f"{query_name}_{timestamp}.txt"
             with open(address_file, "w") as f:
                 for addr in addresses:
                     f.write(f"{addr}\n")
@@ -104,7 +109,7 @@ class ContractFetchTask:
 
             # 4. 保存为 parquet
             df = pd.DataFrame(contracts_data)
-            output_path = f"data/{query_name}_info_{timestamp}.parquet"
+            output_path = data_dir / f"{query_name}_info_{timestamp}.parquet"
             df.to_parquet(output_path, engine="pyarrow", index=False)
             logger.info(f"[{query_name}] Saved {len(contracts_data)} contracts to {output_path}")
 
@@ -114,10 +119,11 @@ class ContractFetchTask:
                 group_id = 1
             else:
                 group_id = 0
-            self.notifier.notify(abs_output_path, group_id)
+            if not self.notifier.notify(abs_output_path, group_id):
+                logger.error("Import callback failed; the local Parquet batch is retained for manual retry")
 
         except Exception as e:
-            logger.error(f"[{query_name}] Query failed: {e}")
+            logger.error(f"[{query_name}] Query failed ({type(e).__name__})")
 
     def _fetch_contract(self, addr: str, index: int = None):
         """获取单个合约信息"""

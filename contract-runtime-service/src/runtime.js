@@ -54,6 +54,7 @@ async function initRuntime() {
         defaultBalance: 1000
       },
       chain: {
+        hardfork: 'shanghai',
         chainId: 1337,
         networkId: 1337
       }
@@ -91,6 +92,17 @@ function cleanupExpiredSessions() {
       sessions.delete(sessionId)
     }
   }
+}
+
+async function closeRuntime() {
+  clearInterval(cleanupTimer)
+  cleanupTimer = null
+  sessions.clear()
+  ethersProvider?.destroy()
+  await ganacheProvider?.disconnect()
+  ethersProvider = null
+  ganacheProvider = null
+  deployerSigner = null
 }
 
 function createSessionId() {
@@ -359,6 +371,7 @@ async function callContract({
 module.exports = {
   SESSION_TTL_MS,
   callContract,
+  closeRuntime,
   cleanupExpiredSessions,
   deployContract,
   getSession,

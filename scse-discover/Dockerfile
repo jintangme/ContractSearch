@@ -9,6 +9,6 @@ COPY . .
 
 RUN mkdir -p data
 
-EXPOSE 8000
+EXPOSE 18000
 
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "18000"]

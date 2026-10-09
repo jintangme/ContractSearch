@@ -2,10 +2,10 @@ const express = require('express')
 const cors = require('cors')
 const { compileSolidity } = require('./compiler')
 const { parseSolidityAst } = require('./ast-parser')
-const { callContract, deployContract, initRuntime } = require('./runtime')
+const { callContract, closeRuntime, deployContract, initRuntime } = require('./runtime')
 
-const PORT = Number(process.env.PORT || 19090)
-const HOST = process.env.HOST || '127.0.0.1'
+const PORT = Number(process.env.RUNTIME_PORT || process.env.PORT || 19090)
+const HOST = process.env.RUNTIME_HOST || process.env.HOST || '127.0.0.1'
 
 const app = express()
 
@@ -15,6 +15,10 @@ app.use(cors({
 app.use(express.json({
   limit: '1mb'
 }))
+
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', mode: 'shared-local-evm', compilerVersion: require('solc').version() })
+})
 
 app.post('/api/runtime/compile', async (req, res) => {
   const result = await compileSolidity({
@@ -87,12 +91,18 @@ initRuntime()
 
     server.on('error', (err) => {
       const message = err.code === 'EADDRINUSE'
-        ? `端口 ${PORT} 已被占用，请关闭已有服务或设置 PORT 使用其他端口`
+        ? `端口 ${PORT} 已被占用，请关闭已有服务或设置 RUNTIME_PORT 使用其他端口`
         : err.message || 'Runtime service listen error'
 
       console.error(message)
       process.exitCode = 1
     })
+
+    for (const signal of ['SIGINT', 'SIGTERM']) {
+      process.once(signal, () => {
+        server.close(() => closeRuntime().catch(() => { process.exitCode = 1 }))
+      })
+    }
   })
   .catch((err) => {
     console.error(err.message || err)

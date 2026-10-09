@@ -17,10 +17,17 @@
     <modules>
         <module>cloud-gateway</module>
         <module>cloud-service</module>
-        <module>cloud-auth-service</module>
-        <module>cloud-user-service</module>
         <module>cloud-agent-service</module>
     </modules>
+    <profiles>
+        <profile>
+            <id>legacy-service-stubs</id>
+            <modules>
+                <module>cloud-auth-service</module>
+                <module>cloud-user-service</module>
+            </modules>
+        </profile>
+    </profiles>
     <packaging>pom</packaging>
 
     <properties>

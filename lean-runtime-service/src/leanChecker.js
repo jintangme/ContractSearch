@@ -3,6 +3,7 @@ const crypto = require('crypto')
 const fs = require('fs/promises')
 const os = require('os')
 const path = require('path')
+const { proofPolicyDiagnostics, hasIncompleteProofWarning } = require('./proofPolicy')
 
 const MAX_SOURCE_LENGTH = 1024 * 1024
 const DEFAULT_FILE_NAME = 'Proof.lean'
@@ -56,9 +57,9 @@ function parseLeanDiagnostics(output, fallbackSeverity = 'error') {
 }
 
 function splitDiagnostics(output) {
-  const diagnostics = parseLeanDiagnostics(output)
+  const diagnostics = parseLeanDiagnostics(output, 'info')
   return {
-    errors: diagnostics.filter(item => item.severity !== 'warning'),
+    errors: diagnostics.filter(item => item.severity === 'error'),
     warnings: diagnostics.filter(item => item.severity === 'warning')
   }
 }
@@ -76,7 +77,7 @@ function execLean(leanBin, filePath, timeoutMs, cwd) {
   })
 }
 
-async function checkLeanSource({ sourceCode, fileName } = {}) {
+async function checkLeanSource({ sourceCode, fileName } = {}, { execute = execLean } = {}) {
   const startedAt = Date.now()
   const code = typeof sourceCode === 'string' ? sourceCode : ''
 
@@ -114,8 +115,23 @@ async function checkLeanSource({ sourceCode, fileName } = {}) {
     }
   }
 
+  const policyErrors = proofPolicyDiagnostics(code)
+  if (policyErrors.length) {
+    return {
+      success: false,
+      status: 'failed',
+      errorType: policyErrors[0].errorType,
+      message: 'Lean source contains an incomplete proof or an unsupported explicit assumption.',
+      errors: policyErrors,
+      warnings: [],
+      elapsedMs: Date.now() - startedAt
+    }
+  }
+
   const leanBin = process.env.LEAN_BIN || 'lean'
-  const timeoutMs = Number(process.env.LEAN_TIMEOUT_MS || 10000)
+  const configuredTimeout = Number(process.env.LEAN_TIMEOUT_MS || 10000)
+  const timeoutMs = Number.isFinite(configuredTimeout) && configuredTimeout > 0
+    ? Math.min(configuredTimeout, 60000) : 10000
   const tempDir = path.join(os.tmpdir(), `lean-check-${crypto.randomBytes(8).toString('hex')}`)
   const safeFileName = safeLeanFileName(fileName)
   const filePath = path.join(tempDir, safeFileName)
@@ -124,23 +140,36 @@ async function checkLeanSource({ sourceCode, fileName } = {}) {
     await fs.mkdir(tempDir, { recursive: true })
     await fs.writeFile(filePath, code, 'utf8')
 
-    const result = await execLean(leanBin, filePath, Number.isFinite(timeoutMs) ? timeoutMs : 10000, tempDir)
+    const result = await execute(leanBin, filePath, timeoutMs, tempDir)
     const elapsedMs = Date.now() - startedAt
     const combinedOutput = [result.stdout, result.stderr].filter(Boolean).join('\n')
     const { errors, warnings } = splitDiagnostics(combinedOutput)
 
-    if (!result.error) {
+    if (!result.error && hasIncompleteProofWarning(warnings)) {
+      return {
+        success: false,
+        status: 'failed',
+        errorType: 'INCOMPLETE_PROOF',
+        message: 'Lean reported an incomplete proof; the source check did not pass.',
+        errors: warnings.filter(item => hasIncompleteProofWarning([item]))
+          .map(item => ({ ...item, severity: 'error' })),
+        warnings,
+        elapsedMs
+      }
+    }
+
+    if (!result.error && errors.length === 0) {
       return {
         success: true,
         status: 'passed',
-        message: 'Lean proof checked successfully.',
+        message: 'Lean source check passed. This result applies only to the submitted Lean source.',
         errors: [],
         warnings,
         elapsedMs
       }
     }
 
-    if (result.error.code === 'ENOENT') {
+    if (result.error?.code === 'ENOENT') {
       return {
         success: false,
         status: 'failed',
@@ -152,12 +181,12 @@ async function checkLeanSource({ sourceCode, fileName } = {}) {
       }
     }
 
-    if (result.error.killed || result.error.signal === 'SIGTERM') {
+    if (result.error?.killed || result.error?.signal === 'SIGTERM') {
       return {
         success: false,
         status: 'failed',
         errorType: 'LEAN_TIMEOUT',
-        message: `Lean proof check timed out after ${Number.isFinite(timeoutMs) ? timeoutMs : 10000}ms.`,
+        message: `Lean source check timed out after ${timeoutMs}ms.`,
         errors: errors.length ? errors : [{
           line: null,
           column: null,
@@ -172,12 +201,12 @@ async function checkLeanSource({ sourceCode, fileName } = {}) {
     return {
       success: false,
       status: 'failed',
-      message: 'Lean proof check failed.',
+      message: 'Lean source check failed.',
       errors: errors.length ? errors : [{
         line: null,
         column: null,
         severity: 'error',
-        message: combinedOutput.trim() || result.error.message || 'Lean proof check failed.'
+        message: combinedOutput.trim() || result.error?.message || 'Lean source check failed.'
       }],
       warnings,
       elapsedMs

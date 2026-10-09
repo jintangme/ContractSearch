@@ -16,7 +16,7 @@
 
 ```bash
 cd contract-runtime-service
-npm install
+npm ci
 ```
 
 ## 启动
@@ -28,10 +28,18 @@ npm run dev
 默认端口为 `19090`，也可以通过环境变量覆盖：
 
 ```bash
-PORT=19090 npm run dev
+RUNTIME_PORT=19090 npm run dev
 ```
 
 启动后会初始化 Local Sandbox，并使用 Ganache 默认测试账户作为 deployer。
+
+`RUNTIME_HOST` 默认 `127.0.0.1`，`RUNTIME_PORT` 默认 `19090`；兼容旧的
+`HOST` / `PORT` 作为后备值。Node 服务读取进程环境变量，不会自动加载 `.env`。
+`GET /health` 返回服务状态、运行模式及 bundled compiler 版本。
+
+Ganache 使用 Shanghai hardfork；Solidity 0.8.20 及以上编译器显式以 Shanghai
+为目标，避免更新编译器默认产生沙盒不支持的指令。老版本 solc 保留其默认目标。
+这是兼容本地运行的配置，不代表目标主网或其他链的部署配置。
 
 ## 编译接口
 
@@ -75,8 +83,8 @@ curl -X POST http://localhost:19090/api/runtime/compile \
     "preferredVersion": "0.8.20",
     "majorMinor": "0.8"
   },
-  "compilerVersion": "0.8.30",
-  "selectedCompilerVersion": "0.8.30",
+  "compilerVersion": "0.8.35",
+  "selectedCompilerVersion": "0.8.35",
   "versionMismatch": false,
   "contracts": [
     {
@@ -105,8 +113,8 @@ curl -X POST http://localhost:19090/api/runtime/compile \
     "preferredVersion": "0.4.15",
     "majorMinor": "0.4"
   },
-  "compilerVersion": "0.8.30",
-  "selectedCompilerVersion": "0.8.30",
+  "compilerVersion": "0.8.35",
+  "selectedCompilerVersion": "0.8.35",
   "targetCompilerRelease": "v0.4.26+commit.4563c3fc",
   "versionMismatch": true,
   "errors": [
@@ -390,3 +398,24 @@ curl -X POST http://localhost:19090/api/runtime/call \
 - 目前提供编译、部署、函数调用接口。
 - 暂不提供多文件 import 支持。
 - 部署和调用只发生在 Local Sandbox，不是真实链上交易。
+
+
+## 运行边界与验证
+
+这个服务使用共享内存链和共享 signer，没有租户隔离、用户鉴权或操作系统级
+编译沙箱。Session 过期只删除引用，不回滚链状态；重启服务会清空所有链数据。
+把 Node 服务拆为独立进程不等于隔离不可信源码。不要将整个 runtime API 匿名
+发布到公网；公开演示应禁用此入口，或另行设计鉴权、资源限制与执行隔离。
+
+```bash
+npm test
+```
+
+测试使用 bundled solc 和本地内存链，不下载远程编译器或连接真实区块链，覆盖
+AST metadata、错误源码 diagnostics，以及字符串合约的编译、部署、写入、读取
+和 session 过期。部分 Node/平台组合下 Ganache 原生 µWS 扩展不可用，会回退
+到 JavaScript 实现；可用性与性能需按实际平台验证。
+
+服务首次编译旧版本时可能下载远程 compiler。当前映射只包含 0.4.26、0.5.17、
+0.6.12、0.7.6、0.8.20；它不是任意版本解析器，精确 pragma 未必有对应版本。
+远程 compiler 的可达性和版本许可需按实际使用版本检查。

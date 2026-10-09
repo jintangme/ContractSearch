@@ -1,6 +1,6 @@
 spring:
   application.name: smart-contract-search-engine
-  # 引入mysql
+  # PostgreSQL / ParadeDB
   datasource:
     driver-class-name: org.postgresql.Driver
     url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/mydatabase}
@@ -14,9 +14,11 @@ spring:
   cloud:
     nacos:
       serverAddr: ${NACOS_SERVER_ADDR:127.0.0.1:8848}
+      config:
+        enabled: ${NACOS_CONFIG_ENABLED:false}
       discovery:
         server-addr: ${spring.cloud.nacos.server-addr}
-        enabled: ${NACOS_DISCOVERY_ENABLED:true}
+        enabled: ${NACOS_DISCOVERY_ENABLED:false}
   config:
     import:
       - optional:nacos:nacos-config-example.properties?refreshEnabled=true
@@ -34,12 +36,18 @@ legacy:
   conversation-ddl:
     enabled: ${LEGACY_CONVERSATION_DDL_ENABLED:true}
 
+contract:
+  import:
+    token: ${CONTRACT_IMPORT_TOKEN:}
+    root: ${CONTRACT_IMPORT_ROOT:}
+
 security:
   jwt:
     secret: ${JWT_SECRET:scse-dev-jwt-secret-2026-local-min-32-bytes}
     expiration-ms: ${JWT_EXPIRATION_MS:86400000}
 
 server:
+  address: ${CONTRACT_SERVICE_HOST:127.0.0.1}
   tomcat:
     accept-count: 2000
     max-connections: 2000

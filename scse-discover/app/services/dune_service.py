@@ -21,10 +21,8 @@ def fetch_contracts_by_query(api_key: str, query_id: int) -> list[str]:
         logger.warning(f"Query {query_id} returned no rows")
         return []
 
-    # 打印实际列名和前5行
+    # Log schema only, not provider row contents.
     logger.info(f"Query {query_id} columns: {list(rows[0].keys())}")
-    for i, row in enumerate(rows[:5]):
-        logger.info(f"Query {query_id} row[{i}]: {row}")
 
     addresses = [row.get("address") for row in rows]
     none_count = addresses.count(None)

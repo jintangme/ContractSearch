@@ -288,7 +288,7 @@ function validateSource(sourceCode) {
   return null
 }
 
-function buildStandardInput(sourceCode, fileName) {
+function buildStandardInput(sourceCode, fileName, compilerVersion) {
   return {
     language: 'Solidity',
     sources: {
@@ -297,6 +297,9 @@ function buildStandardInput(sourceCode, fileName) {
       }
     },
     settings: {
+      // Ganache 7's local chain runs Shanghai. Newer solc defaults may emit
+      // opcodes for a later fork, which compile successfully but fail at runtime.
+      ...(compareVersions(compilerVersion, '0.8.20') >= 0 ? { evmVersion: 'shanghai' } : {}),
       optimizer: {
         enabled: false,
         runs: 200
@@ -376,7 +379,7 @@ async function compileSolidity({ sourceCode, fileName = DEFAULT_FILE_NAME, compi
       }
     }
 
-    const input = buildStandardInput(sourceCode, normalizedFileName)
+    const input = buildStandardInput(sourceCode, normalizedFileName, compilerContext.selectedCompilerVersion)
     const output = JSON.parse(compilerContext.compiler.compile(JSON.stringify(input)))
     const diagnostics = (output.errors || []).map(item => normalizeSolcMessage(item, sourceCode))
     const errors = diagnostics.filter(item => item.severity === 'error')
