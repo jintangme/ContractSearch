@@ -1,0 +1,77 @@
+name: Build and verify
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python3 scripts/check-public-content.py
+      - run: python3 scripts/check-doc-links.py
+      - run: python3 -m unittest discover -s scripts/tests -v
+      - run: python3 scripts/export-public-source.py
+      - run: node scripts/agentic-rag/run-eval.mjs --check
+
+  java:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+      - run: mvn -B -ntp -f backend/pom.xml test
+
+  javascript:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        directory: [frontend, contract-runtime-service, lean-runtime-service]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: ${{ matrix.directory }}/package-lock.json
+      - run: npm ci
+        working-directory: ${{ matrix.directory }}
+      - run: npm test
+        working-directory: ${{ matrix.directory }}
+      - if: matrix.directory == 'frontend'
+        run: npm run build
+        working-directory: frontend
+
+  discovery:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: scse-discover/requirements.txt
+      - run: pip install -r scse-discover/requirements.txt
+      - run: python -m unittest discover -s tests -v
+        working-directory: scse-discover
+
+  demo:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python3 scripts/configure-demo.py
+      - run: docker compose up --build -d
+      - run: python3 scripts/smoke-demo.py
+      - if: always()
+        run: docker compose down -v

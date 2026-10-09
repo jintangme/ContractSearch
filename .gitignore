@@ -39,6 +39,7 @@ scse-discover/data/
 scse-discover/nacos-data/
 scse-discover/*.parquet
 scse-discover/*.txt
+!scse-discover/requirements.txt
 
 # Local database seed/dumps and backups are large or may contain
 # third-party / licensed data. They must never be pushed.
@@ -59,3 +60,12 @@ tmp/
 
 # Internal competition material (not for public release)
 docs/竞赛答辩PPT详细文案.md
+
+# Private verification output and generated local configuration
+.local/
+artifacts/
+playwright-report/
+test-results/
+**/.env.local
+**/*.har
+**/storage-state*.json

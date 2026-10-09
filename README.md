@@ -1,304 +1,155 @@
 # ContractSearch
 
-AI-powered smart contract retrieval, analysis, and security verification platform.
+**An evidence-driven workspace for finding, understanding, and experimenting with Solidity contracts.**
 
-ContractSearch is an end-to-end platform for finding, understanding, and reusing
-Solidity smart contracts. It combines a searchable repository of real on-chain
-contracts with an Agentic RAG layer that retrieves evidence, reads source code,
-compiles contracts in a sandbox, and runs a read-only security precheck before
-producing an answer with traceable sources.
+[中文说明](README.zh-CN.md) · [Quick start](docs/development/quickstart.md) · [Architecture](docs/architecture/overview.md) · [Validation](docs/evaluation/README.md) · [Third-party notices](THIRD_PARTY_NOTICES.md)
 
-> Development and research project. The system is functional and has been run
-> end to end, but it is not a hosted product and some services must currently be
-> started manually.
+ContractSearch 2.0 connects contract search with a bounded Agentic RAG workflow.
+Users can inspect candidate source code, follow an answer's evidence, and compile
+and exercise small contracts in a local EVM. The repository includes a small,
+synthetic demonstration dataset so the basic workflow can run without model API keys.
 
----
+![ContractSearch local contract workspace](docs/assets/contract-lab.png)
 
-## Overview
+*Actual application running against the included demonstration environment. The
+demo contracts and account are synthetic; this image is not an Agent evaluation.*
 
-Reusing a smart contract is not only a search problem. A developer needs to know
-whether a candidate match is actually suitable: who can mint tokens, which
-access-control model it uses, whether the source is complete, whether it still
-compiles, and what its known risks are. Conventional contract repositories stop
-at "related results", and a plain chat model cannot inspect a private contract
-repository or verify anything it claims.
+## What the project implements
 
-ContractSearch addresses this by pairing a contract repository and a curated
-knowledge base with a bounded Agentic RAG loop. The agent decides what it needs,
-retrieves internal data, calls allowlisted tools, observes the real results, and
-re-plans if the evidence is insufficient. Final answers are constrained to cite
-evidence collected during the run or to abstain.
+| Capability | Implementation |
+|---|---|
+| Contract retrieval | ParadeDB BM25 over source/descriptions; optional description embeddings; Reciprocal Rank Fusion |
+| Knowledge ingestion | Source-format normalization, content deduplication, AST-aware chunks with lexical fallback, checkpointed ingestion |
+| Agent orchestration | Java control plane; observation/replanning loop; five allowlisted tools; step and retrieval budgets |
+| Evidence tracking | Per-run evidence IDs, file/line provenance, content hashes, trust labels, citation existence validation |
+| Contract workspace | Monaco editor, Solidity compilation, local Ganache deployment and function calls |
+| Developer workflow | Browse, search, contract detail, conversations, precheck, favorites, and saved drafts |
 
----
+The project's engineering focus is the integration of retrieval, source
+provenance, bounded tool execution, and an inspectable user workflow. Compilers,
+database engines, editors, and model inference are provided by the components
+and services listed in [Third-party notices](THIRD_PARTY_NOTICES.md).
 
-## Key Features
+## Try the basic demo
 
-- **Contract repository** - a PostgreSQL/ParadeDB store of real Ethereum
-  contracts discovered through Dune and enriched with Etherscan source, ABI, and
-  metadata.
-- **Hybrid retrieval** - semantic search (DashScope embeddings), BM25 over
-  descriptions and source code, and knowledge-chunk text retrieval fused with
-  Reciprocal Rank Fusion.
-- **Knowledge layer** - contract source is normalized, deduplicated, parsed into
-  AST-aware chunks, and stored with file path, line range, symbol, content hash,
-  and a trust level. A curated set of authoritative sources (ERC/EIP standards,
-  Solidity documentation, OpenZeppelin, OWASP) is versioned and imported
-  separately.
-- **Iterative Agentic RAG** - a bounded loop where a GLM model re-decides after
-  every tool observation, with explicit step, tool-call, and retrieval budgets.
-- **Evidence-first answers** - each run records evidence items and only allows a
-  final answer to cite evidence that actually exists in that run.
-- **Contract Lab** - Solidity compilation, in-memory EVM sandbox deployment and
-  function calls, plus optional Lean 4 proof checking.
-- **Security precheck** - a read-only analysis combining deterministic Solidity
-  heuristics with a GLM pass, exposed both as a standalone page and as an agent
-  tool.
-- **Developer web UI** - Vue 3 single-page application with browse, search,
-  contract detail, AI conversation, security precheck, and Contract Lab views.
+Requirements: Docker with Compose v2, Python 3.10+, and access to dependency
+registries for the first build. No production database or API key is needed.
 
----
+```bash
+git clone https://github.com/jintangme/ContractSearch.git
+cd ContractSearch
+python3 scripts/configure-demo.py
+docker compose up --build -d
+python3 scripts/smoke-demo.py
+```
 
-## Architecture
+Open **http://localhost:8080**, register a disposable local account (an
+`example.com` email is sufficient), and try:
+
+1. Search source code for `owner` or browse the demo collection.
+2. Open a contract to inspect its source and ABI.
+3. Send it to Contract Lab, compile it, then deploy and call it in the local EVM.
+
+The configuration helper generates fresh local secrets without printing them
+and refuses to overwrite an existing configuration. Ports are bound to
+loopback. The demo uses a dedicated database volume; ordinary `docker compose
+down` keeps it.
+
+See [the full quick start](docs/development/quickstart.md) for host development,
+startup checks, and explicitly enabling Agent mode.
+
+## Agent workflow
+
+```mermaid
+flowchart LR
+    Task[User task] --> Decide[Bounded model decision]
+    Decide --> Tools[Retrieve · Search · Read · Compile · Precheck]
+    Tools --> Evidence[Observed results and source evidence]
+    Evidence --> Decide
+    Decide --> Answer[Answer with valid evidence IDs or abstain]
+```
+
+The default loop allows six model decisions, five tool calls, and two retrieval
+rounds. The model observes tool results before deciding again. Tools have
+validated arguments and fixed service destinations; deployment, filesystem
+access, shell execution, and Lean are outside the Agent toolset.
+
+The curated reference manifest pins ERC/EIP, Solidity, OpenZeppelin, and OWASP
+materials to upstream revisions. Reference material and retrieved code are
+treated as data with explicit trust labels.
+
+Agent mode needs provider credentials and knowledge ingestion. The basic demo
+does not simulate Agent answers. See [Agent setup](docs/development/agent-mode.md).
+
+## System layout
 
 ```mermaid
 flowchart TD
-    U[Browser / Vue 3 SPA] -->|HTTPS| N[Nginx]
-    N -->|/api/*| G[Spring Cloud Gateway]
-    N -->|/runtime-api/*| CR[contract-runtime-service]
-    N -->|/lean-api/*| LR[lean-runtime-service]
-    G -->|/api/agent/*| A[cloud-agent-service]
-    G -->|/api/*| S[cloud-service]
-
-    A -->|retrieval / tool calls| S
-    A -->|compile| CR
-    A -->|read-only precheck| S
-    S -->|embeddings| DS[DashScope]
-    S -->|chat / precheck| GLM[Zhipu GLM]
-    A -->|Agent decisions| GLM
-
-    S --> DB[(PostgreSQL / ParadeDB\npgvector + pg_search)]
-    A --> DB
-    D[scse-discover\nFastAPI] -->|Dune + Etherscan| DB
+    Browser[Vue application] --> Web[Nginx local demo]
+    Web --> Gateway[Spring Cloud Gateway]
+    Gateway --> Business[Contract and user services]
+    Gateway --> Agent[Optional Agent service]
+    Web --> Runtime[Solidity and local EVM runtime]
+    Agent --> Business
+    Agent --> Runtime
+    Business --> DB[(PostgreSQL · pg_search · pgvector)]
+    Agent --> DB
+    Agent --> Models[External model API]
+    Business --> Models
+    Discovery[Optional offline discovery] --> Files[Shared Parquet directory]
+    Files --> Business
 ```
 
-Request topology:
-
-```text
-Browser
-  -> Nginx
-       /api/*        -> Gateway :18080 -> cloud-service :18081
-       /api/agent/*  -> Gateway :18080 -> cloud-agent-service :18082
-       /runtime-api/* -> contract-runtime-service :19090
-       /lean-api/*    -> lean-runtime-service :19100
-```
-
-For a detailed component breakdown see
-[`docs/architecture/overview.md`](docs/architecture/overview.md).
-
----
-
-## AI / Agent Workflow
-
-The agent is implemented as a Java/Spring Boot control plane
-(`backend/cloud-agent-service`) rather than a separate Python runtime, so it
-reuses the existing Spring Security, Gateway, and MyBatis/Flyway stack.
-
-1. **Task intake** - the user asks a question in the AI conversation view. The
-   request creates an agent run and returns immediately; the UI polls the run
-   snapshot and streams activity.
-2. **Planning** - the GLM model receives the task, a bounded tool catalog, and
-   the current run state, and returns one structured action.
-3. **Action** - the action is validated against the tool allowlist, JSON
-   argument rules, and the run budget. Tools are read-only or sandboxed:
-   - `retrieve_knowledge.v1` - hybrid retrieval over knowledge chunks
-   - `search_contracts.v1` - search the contract repository
-   - `get_contract.v1` - read source, ABI, and metadata for one contract
-   - `compile_contract.v1` - compile source in the isolated runtime
-   - `precheck_contract.v1` - read-only AI security precheck
-4. **Observation and re-planning** - tool output is normalized into evidence and
-   fed back to the model, which decides whether to retrieve more, read source,
-   verify, or answer.
-5. **Synthesis** - the final answer may only cite evidence created in the run. If
-   the evidence is insufficient, the run ends without a definitive answer.
-
-Bounds and guardrails:
-
-- Maximum 6 model decisions, 5 tool calls, and 2 retrieval rounds per run.
-- Identical tool calls are detected; the first repeat is skipped and the model
-  must use existing evidence, only a second repeat terminates the run.
-- Retrieved text, contract comments, and user input are wrapped as untrusted
-  data and cannot modify system instructions, tool permissions, or budgets.
-- The agent cannot use shell, arbitrary URLs, the filesystem, raw database
-  access, or any persistent write. Contract deployment and calling are not
-  exposed to the agent loop.
-- Lean 4 is available in Contract Lab but intentionally kept out of the default
-  agent toolset, because checking a hand-written Lean model is not a proof that
-  the original Solidity is equivalent.
-
----
-
-## Tech Stack
-
-| Layer | Technologies |
+| Directory | Responsibility |
 |---|---|
-| Frontend | Vue 3, Vite, Vue Router, Pinia, Axios, Monaco Editor |
-| API gateway | Spring Cloud Gateway, JWT |
-| Backend services | Spring Boot 3.5, Spring Cloud 2025, Spring Cloud Alibaba, MyBatis-Plus, Flyway |
-| Service discovery | Nacos (optional, single-server deployments use static routing) |
-| Database / search | PostgreSQL 18, ParadeDB `pg_search`, `pgvector`, `tsvector`/GIN |
-| AI | Zhipu GLM (chat, agent decisions, precheck), DashScope embeddings (768-dim) |
-| Runtime tools | Node.js, Express, solc 0.8.35, ethers 6, Ganache (in-memory EVM), Lean 4 |
-| Data ingestion | Python, FastAPI, Dune Analytics, Etherscan v2 |
-| Deployment | Nginx, systemd (single Ubuntu server) |
+| `backend/` | Gateway, business service, Agent service; optional reserved modules |
+| `frontend/` | Vue UI, extracted workspace modules, evidence presentation |
+| `contract-runtime-service/` | solc, AST extraction, shared in-memory Ganache runtime |
+| `lean-runtime-service/` | Optional local Lean source checking |
+| `scse-discover/` | Optional Dune/Etherscan discovery and protected import callback |
+| `database/bootstrap/` | Fresh demo schema and three original example contracts |
+| `deploy/` | Container builds and loopback-only demo proxy |
+| `docs/` | Architecture, development, evaluation, reference, and historical records |
+| `scripts/` | Configuration, smoke checks, publication checks, knowledge tools |
 
----
+## Validation and boundaries
 
-## Project Structure
+Executable checks cover the Agent control loop, trust boundaries, runtime
+compilation/deployment/calls, frontend state and evidence handling, and the basic
+demo APIs. Exact results and commands are recorded in
+[Validation](docs/evaluation/README.md); CI is defined in
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml).
 
-```text
-backend/
-  cloud-gateway/          API gateway, JWT validation, internal-token injection
-  cloud-service/          Contracts, search, users, favorites, drafts, precheck, legacy AI chat
-  cloud-agent-service/    Agent loop, tools, RAG, evidence, run persistence
-  cloud-auth-service/     Reserved standalone auth module (not required to run)
-  cloud-user-service/     Reserved standalone user module (not required to run)
-frontend/                 Vue 3 + Vite single-page application
-scse-discover/            Offline contract discovery and ingestion (FastAPI)
-contract-runtime-service/ Solidity compile / sandbox deploy / call (Node)
-lean-runtime-service/     Lean 4 proof checking (Node)
-docs/                     Architecture, deployment, knowledge, and ADR documentation
-scripts/                  Knowledge sync, probes, and evaluation harness
-```
+- Citation validation checks that evidence exists in a run. It does not prove
+  that every generated claim is entailed by that evidence.
+- Security precheck combines source heuristics and model assistance. It is not
+  a security audit or a guarantee that a contract is safe.
+- Lean checks a submitted Lean file. No Solidity-to-Lean equivalence proof is
+  implemented; the checker is excluded from the demo proxy.
+- The EVM is shared and local. It is not a production multi-tenant execution service.
+- Running Agent tasks live in memory; optional persistence archives completed
+  sessions, runs, events, and evidence. It does not resume interrupted execution.
+- Historical mock evaluation rows test the evaluation harness, not model quality.
+- The bundled sample has no precomputed embeddings. It supports basic code
+  search; semantic retrieval requires provider configuration and suitable data.
 
-`database/` and `backups/` are intentionally excluded from version control; see
-[Data and licensing](#data-and-licensing).
+See [current status](docs/status.md) and [version evolution](docs/version-history.md).
 
----
+## Data, attribution, and privacy
 
-## Getting Started
+The demo contains no real user accounts, conversation histories, production
+dumps, or provider credentials. The original private dataset and backups are
+excluded. Knowledge sources retain their own licenses and provenance; see
+[data sources](docs/reference/data-sources.md).
 
-### Prerequisites
+No **repository-wide license** has been selected. Existing file and snippet
+license markers remain in place and require source-specific review; the new
+database examples are marked `UNLICENSED`. Third-party software and content
+remain subject to their own terms. See
+[Third-party notices](THIRD_PARTY_NOTICES.md) and [security guidance](SECURITY.md).
 
-- Java 17 and Maven 3.9+
-- Node.js 20+ and npm
-- PostgreSQL with the `vector` and `pg_search` extensions (ParadeDB)
-- Zhipu GLM API key and a DashScope API key
-- Python 3.10+ (only for the discovery / ingestion script)
-- Lean 4 (only for the Lean proof-check feature)
+For a reviewed source snapshot without Git history, run
+`python3 scripts/export-public-source.py` from the checkout. The resulting ZIP
+is kept under ignored `artifacts/`; it does not clean an existing remote history.
 
-The repository currently requires several local services to run. There is no
-single-command startup, and no Docker Compose file covers the full platform yet.
-
-### 1. Database
-
-Create a database and enable the required extensions, then restore a seed or
-build the contract data with the discovery service. Apply the agent migrations
-in `backend/cloud-agent-service/src/main/resources/db/migration/` (Flyway V1-V6)
-by temporarily setting `AGENT_MIGRATIONS_ENABLED=true` for a single agent
-instance.
-
-### 2. Backend
-
-```bash
-cd backend
-mvn -DskipTests clean package
-
-java -jar cloud-service/target/cloud-service-1.0-SNAPSHOT.jar
-java -jar cloud-agent-service/target/cloud-agent-service-1.0-SNAPSHOT.jar
-java -jar cloud-gateway/target/cloud-gateway-1.0-SNAPSHOT.jar
-```
-
-### 3. Runtime services
-
-```bash
-cd contract-runtime-service && npm ci && npm start   # :19090
-cd lean-runtime-service && npm ci && npm start       # :19100
-```
-
-### 4. Frontend
-
-```bash
-cd frontend
-cp .env.example .env
-npm ci
-npm run dev        # http://localhost:5173
-```
-
-### Startup order
-
-PostgreSQL -> `cloud-service` -> runtime services -> `cloud-agent-service` ->
-`cloud-gateway` -> frontend.
-
----
-
-## Configuration
-
-All credentials are provided through environment variables. Copy `.env.example`
-to `.env` and fill in real values; a filled `.env` is ignored by Git and must
-never be committed.
-
-Key variables:
-
-| Variable | Purpose |
-|---|---|
-| `JWT_SECRET` | JWT signing secret |
-| `AGENT_INTERNAL_TOKEN` | Shared gateway-to-agent token (>= 24 chars) |
-| `ZHIPU_API_KEY` | GLM chat, agent decisions, security precheck |
-| `DASHSCOPE_API_KEY` | Embedding generation for semantic search |
-| `SPRING_DATASOURCE_URL` / `POSTGRESQL_DB_*` | Main database connection |
-| `AGENT_*` | Agent activation, model, budgets, persistence, knowledge layer |
-
-Spring services read these through `${VAR:default}` placeholders in
-`application.yml`. The Node runtimes and the Python service read their own
-environment (see `scse-discover/.env.example`).
-
----
-
-## Development / Status
-
-This is an active development and research project. The contract repository,
-knowledge layer, hybrid retrieval, agent loop, evidence persistence, and web UI
-are implemented and have been exercised end to end. The precheck and Contract
-Lab features work independently of the agent.
-
-Known limitations are tracked in `docs/agentic-rag/current-state.md` and the
-delivery reports in `docs/agentic-rag/reports/`. Examples include single-file
-compilation in the runtime service and a reserved (not yet active) standalone
-auth/user module.
-
-Development notes and the full delivery plan are kept outside the public
-repository. Deployment instructions are in
-`docs/deployment-guide.zh-CN.md` (Chinese).
-
----
-
-## Data and Licensing
-
-- The repository does **not** include the database dump, seed SQL, generated
-  Parquet files, or backups. These are large and contain third-party contract
-  source and documentation. They are excluded via `.gitignore`.
-- Authoritative knowledge sources are recorded as a fixed manifest with URLs,
-  versions, and content hashes in `docs/agentic-rag/knowledge-sources-v1.json`.
-  Their upstream licenses (for example OpenZeppelin MIT, OWASP content) apply to
-  the sourced content, not to this repository's code.
-- No open-source license has been added to this repository yet, pending a final
-  ownership and licensing decision. Until then, all rights are reserved by the
-  author.
-
----
-
-## Author
-
-Developed and maintained by Tang Jin.
-
----
-
-## Documentation
-
-- [`docs/architecture/overview.md`](docs/architecture/overview.md) - component and data-flow overview
-- [`docs/agentic-rag/current-state.md`](docs/agentic-rag/current-state.md) - verified environment and system state
-- [`docs/agentic-rag/service-map.md`](docs/agentic-rag/service-map.md) - service ownership
-- [`docs/agentic-rag/api-inventory.md`](docs/agentic-rag/api-inventory.md) - existing APIs and agent reuse map
-- [`docs/agentic-rag/adr/`](docs/agentic-rag/adr/) - architecture decision records
-- [`docs/agentic-rag/reports/`](docs/agentic-rag/reports/) - delivery stage reports
-- [`docs/deployment-guide.zh-CN.md`](docs/deployment-guide.zh-CN.md) - single-server deployment guide (Chinese)
+Maintained by [jintangme](https://github.com/jintangme).

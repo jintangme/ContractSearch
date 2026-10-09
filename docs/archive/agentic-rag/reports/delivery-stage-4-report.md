@@ -1,6 +1,12 @@
 # Delivery Stage 4 Report：AI 对话即 Agent Workspace
 
-> 状态：`READY_FOR_SMOKE`
+> **Historical record — 2026-08-09.** Archived on 2026-10-09.
+> This describes that checkpoint, not the current release or current verification status.
+> Historical test results and limitations are retained; private run identifiers, backup
+> identifiers and host-specific observations have been omitted or generalized.
+> See [current project status](../../../status.md) before following any operational steps.
+
+> 当时状态：`READY_FOR_SMOKE`
 > 日期：2026-08-09
 
 ## 交付结果

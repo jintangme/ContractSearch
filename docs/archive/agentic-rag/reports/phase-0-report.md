@@ -1,5 +1,11 @@
 # Phase 0 Report: Repository Discovery and Fact Baseline
 
+> **Historical record — 2026-08-09.** Archived on 2026-10-09.
+> This describes that checkpoint, not the current release or current verification status.
+> Historical test results and limitations are retained; private run identifiers, backup
+> identifiers and host-specific observations have been omitted or generalized.
+> See [current project status](../../../status.md) before following any operational steps.
+
 > Date: 2026-08-09  
 > Result: COMPLETE
 > Business code changed: Discovery credential-loading hardening only
@@ -10,9 +16,9 @@ The repository, running local services, live database, OpenAPI surface, model pa
 
 ## Files added
 
-- `docs/agentic-rag/current-state.md`
+- `docs/archive/agentic-rag/current-state.md`
 - `docs/agentic-rag/service-map.md`
-- `docs/agentic-rag/data-profile.md`
+- `docs/archive/agentic-rag/data-profile.md`
 - `docs/agentic-rag/api-inventory.md`
 - `docs/agentic-rag/eval/phase0-smoke-baseline.json`
 - `docs/agentic-rag/adr/ADR-001-service-boundary.md`
@@ -20,7 +26,7 @@ The repository, running local services, live database, OpenAPI surface, model pa
 - `docs/agentic-rag/adr/ADR-003-database-migrations.md`
 - `docs/agentic-rag/adr/ADR-004-sse-auth.md`
 - `docs/agentic-rag/adr/ADR-005-artifact-storage.md`
-- `docs/agentic-rag/reports/phase-0-report.md`
+- `docs/archive/agentic-rag/reports/phase-0-report.md`
 - `docs/agentic-rag/eval/phase0-smoke-queries.json`
 - `docs/agentic-rag/eval/phase0-search-baseline.json`
 - `scripts/agentic-rag/run-phase0-search-baseline.mjs`
@@ -34,8 +40,8 @@ The repository, running local services, live database, OpenAPI surface, model pa
 
 | Check | Result |
 |---|---|
-| Vue/Vite :5173 | PASS, HTTP 200 |
-| Nacos :8848 | PASS; two registered Spring services |
+| Vue/Vite | PASS, HTTP 200 |
+| Nacos | PASS; two registered Spring services |
 | Gateway protected route | PASS, anonymous request rejected with 401 |
 | Spring OpenAPI | PASS; 33 paths / 42 operations |
 | PostgreSQL query | PASS; 18.3, `pg_search 0.23.0`, `vector 0.8.1` |
@@ -43,7 +49,7 @@ The repository, running local services, live database, OpenAPI surface, model pa
 | Solidity compile | PASS; actual compiler 0.8.35 |
 | `glm-4.5-air` basic call | PASS; correct requested/used model returned |
 | Lean proof check | FAIL; request attempted 4.32.2 download and timed out |
-| Discovery service :18000 | NOT RUNNING; not required for online app |
+| Discovery service | NOT RUNNING; not required for online app |
 | Search smoke baseline | PASS; 24/24 requests completed, average 685 ms |
 
 ## Build verification
@@ -51,7 +57,7 @@ The repository, running local services, live database, OpenAPI surface, model pa
 | Command/scope | Result |
 |---|---|
 | Maven reactor tests | PASS; 4 Spring context tests, 0 failures/errors, all 5 reactor projects successful |
-| Vue production build | PASS; output written to `/private/tmp`, project `dist/` not modified |
+| Vue production build | PASS; output written to a temporary directory, project `dist/` not modified |
 | Runtime JavaScript syntax | PASS for both Node entry points |
 | Baseline JSON parse | PASS |
 | Discovery secret-loading tests | PASS; 3 tests |
@@ -62,7 +68,7 @@ Non-blocking warnings recorded for later cleanup: Spring Cloud Gateway uses temp
 ## Important findings
 
 1. Discovery credentials were present in the root config, `.env`, an instruction file and a cached Nacos snapshot. Tracked/Nacos copies are now sanitized; the local `.env` remains ignored. Provider-side rotation is still recommended if any old copy was shared.
-2. Backend direct access trusts `X-User-Id`, so port 18081 is a privileged internal boundary.
+2. Backend direct access trusts `X-User-Id`, so direct service access is a privileged internal boundary.
 3. Runtime versions drift from documentation/package intent; Lean is currently unusable and request-time downloads violate reproducibility.
 4. Search request `limit` is ignored and RRF score is not exposed. All 12 semantic baseline queries returned `SimpleStoragePlus` as Top-1; 20/24 total queries returned 100 rows despite requesting 10.
 5. Corpus duplication and embedding gaps are large enough that Phase 2 must rebuild a versioned shadow corpus rather than reuse rows blindly.
@@ -83,12 +89,12 @@ Phase 0 is recorded as `COMPLETE`.
 
 ## Manual test checklist
 
-- [ ] Open `http://localhost:5173` and confirm login, Browse, Search, Conversation, Contract Check and Contract Lab pages load.
+- [ ] Open the local frontend and confirm login, Browse, Search, Conversation, Contract Check and Contract Lab pages load.
 - [ ] Log in and run one semantic search; confirm results appear and note that more than requested may be returned.
 - [ ] In Contract Lab, compile the default Solidity example; confirm compiler version shown is 0.8.35 in the current installation.
 - [ ] In Proof Workbench, check `example : True := by trivial`; confirm the current failure/timeout before any Lean fix.
 - [ ] Open Nacos and confirm only `cloud-gateway` and `smart-contract-search-engine` are registered.
-- [ ] Confirm ports 18081, 19090 and 19100 are not exposed outside the trusted local/private network.
+- [ ] Confirm backend and runtime services are not exposed outside the trusted local/private network.
 - [ ] Install the updated discovery requirements under Python 3.11, then verify `/health` with `DUNE_API_KEY` and `ETHERSCAN_API_KEY` supplied locally.
 - [ ] If an old project copy was shared, rotate the Dune/Etherscan keys before triggering discovery.
 

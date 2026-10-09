@@ -1,6 +1,12 @@
 # Phase 0 Data Profile
 
-> Source: read-only queries against the running `paradedb` container on 2026-08-09.
+> **Historical record — 2026-08-09.** Archived on 2026-10-09.
+> This describes that checkpoint, not the current release or current verification status.
+> Historical test results and limitations are retained; private run identifiers, backup
+> identifiers and host-specific observations have been omitted or generalized.
+> See [current project status](../../status.md) before following any operational steps.
+
+> Source: read-only queries against the checkpoint database on 2026-08-09.
 
 ## Database and extensions
 
@@ -13,7 +19,7 @@
 | Dump baseline rows | 1887 |
 | Embedding dimensions | `vector(768)` for code and description |
 
-The live database has two more contracts than the dump. The dump must not be treated as the current source of truth.
+At this checkpoint, the live database had two more contracts than its dump. These historical counts do not describe the current demo dataset or a newly initialized database.
 
 ## Completeness and duplication
 

@@ -1,6 +1,12 @@
 # Delivery Stage 3 Report: Iterative Agent Answer Loop
 
-> Status: COMPLETE
+> **Historical record — 2026-08-09.** Archived on 2026-10-09.
+> This describes that checkpoint, not the current release or current verification status.
+> Historical test results and limitations are retained; private run identifiers, backup
+> identifiers and host-specific observations have been omitted or generalized.
+> See [current project status](../../../status.md) before following any operational steps.
+
+> Checkpoint status: COMPLETE
 > Next: Delivery Stage 4 — Existing AI Chat Integration & Delivery
 > Date: 2026-08-09
 
@@ -27,16 +33,16 @@ The fixed Tool allowlist is `retrieve_knowledge.v1`, `search_contracts.v1`, `get
 - Tests: 23 passed, 0 failed, covering V1-V6 migration contracts, structured GLM actions, four-Tool iterative loop, loop detection, invented Evidence rejection, explicit abstention, Tool adapters, and old conversation DDL compatibility.
 - Deterministic full loop completed five decision steps and four Tool observations: Retrieve -> Get -> Compile -> Precheck -> cited final answer.
 - V6 was applied successfully to the local PostgreSQL/ParadeDB schema.
-- Persistence smoke run `090badaf-b12c-475f-b42d-81d96072eaaa` archived a COMPLETE run with prompt version `delivery-stage3-supervisor-v2`, 5 events, 1 Evidence item, and 1 proposal.
-- No paid GLM smoke was made from this shell because `ZHIPU_API_KEY` is not exported in the current Codex process. The existing processes were not terminated by this stage; the final health recheck found ports 18081, 18082, 19090, and 18083 no longer listening, so the local backend stack must be started before manual smoke.
+- Persistence smoke run (identifier omitted) archived a COMPLETE run with prompt version `delivery-stage3-supervisor-v2`, 5 events, 1 Evidence item, and 1 proposal.
+- No paid GLM smoke was made from this shell because `ZHIPU_API_KEY` is not exported in the current Codex process. The existing processes were not terminated by this stage; the final health recheck found the required local services unavailable, so the backend stack needed to be started before manual smoke.
 - The first owner-run live smoke proved four observation/redecision cycles and collected 8 Evidence items, but attempted Knowledge retrieval as a fifth Tool and ended with `BUDGET_EXCEEDED`. The default was therefore raised to 5 bounded Tool calls, retrieval tools are hidden after their own budget is exhausted, and a terminal-only final turn was added. The focused regression for this correction passed 12 tests with 0 failures.
-- The repeated owner-run live smoke `bd4c003c-c641-4ac4-a8a2-a41e3e1c9685` completed with `glm-4.5-air`: 6 model steps, 5 Tool calls, 2 retrieval rounds, and 15 Evidence items. The final answer cited four current-run Evidence IDs. A direct PostgreSQL audit check confirmed `COMPLETE`, prompt version `delivery-stage3-supervisor-v3`, 15 Evidence rows, and 19 ordered event rows. This closes the Stage 3 Exit Gate.
+- The repeated owner-run live smoke (identifier omitted) completed with `glm-4.5-air`: 6 model steps, 5 Tool calls, 2 retrieval rounds, and 15 Evidence items. The final answer cited four current-run Evidence IDs. A direct PostgreSQL audit check confirmed `COMPLETE`, prompt version `delivery-stage3-supervisor-v3`, 15 Evidence rows, and 19 ordered event rows. This closes the Stage 3 Exit Gate.
 
 ## Manual test checklist
 
-1. Restart `cloud-service`, then require `GET http://127.0.0.1:18081/actuator/health` to return `UP`.
+1. Restart `cloud-service`, then require the main service health endpoint to return `UP`.
 2. Restart `cloud-agent-service` with the same trusted internal token, `ZHIPU_API_KEY`, mini loop and Knowledge enabled. Enable persistence with the V6 database configuration if audit records are required.
-3. Require `GET http://127.0.0.1:18082/actuator/health` to return `UP`.
+3. Require the Agent service health endpoint to return `UP`.
 4. Submit one representative task: `搜索一个包含 ERC20 实现的合约，读取源码，验证能否编译，并做一次安全预审后给出有证据的结论`.
 5. Inspect run events and confirm at least one `model.action` occurs after a `tool.completed`; the final response must cite returned Evidence IDs or explicitly abstain.
 6. If persistence is enabled, confirm the terminal run, event, and Evidence rows exist in the Agent tables.

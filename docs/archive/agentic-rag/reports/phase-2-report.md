@@ -1,6 +1,12 @@
 # Phase 2 Report: Knowledge Ingestion
 
-> Status: IN_PROGRESS — Phase 2A/2B foundations, AST and resumable writer verified
+> **Historical record — 2026-08-09.** Archived on 2026-10-09.
+> This describes that checkpoint, not the current release or current verification status.
+> Historical test results and limitations are retained; private run identifiers, backup
+> identifiers and host-specific observations have been omitted or generalized.
+> See [current project status](../../../status.md) before following any operational steps.
+
+> Checkpoint status: IN_PROGRESS — Phase 2A/2B foundations, AST and resumable writer verified
 > Decision: CONTINUE_TO_PHASE_2C_EMBEDDING_AND_SHADOW_INDEX
 > Date: 2026-08-09
 
@@ -37,8 +43,8 @@ No AgentScope dependency was added. The current Java-native service already owns
 ## Verification
 
 - `cloud-agent-service` compiled successfully; nine focused Java tests passed.
-- The runtime AST test passed and a temporary port 19091 HTTP smoke returned the pinned compiler, two declarations and exact spans; the temporary service was then stopped.
-- V1–V3 migrated successfully in guarded schema `agent_phase1_test_phase2b`; the second Flyway run was a no-op and the schema was deleted automatically.
+- The runtime AST test passed and a temporary runtime HTTP smoke returned the pinned compiler, two declarations and exact spans; the temporary service was then stopped.
+- V1–V3 migrated successfully in a guarded disposable schema; the second Flyway run was a no-op and the schema was deleted automatically.
 - The PostgreSQL writer test proved two identical catalog sources collapse to one canonical source/document/chunk and replaying the same job adds zero processed items.
 - No model or Embedding API calls were made.
 - No migration or corpus write was executed against the running `public` schema; database writes were confined to the auto-deleted test schema.

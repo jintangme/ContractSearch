@@ -1,6 +1,12 @@
 # Phase 1A Report: Minimal Agentic RAG Validation
 
-> Status: COMPLETE — minimal validation accepted by project owner
+> **Historical record — 2026-08-09.** Archived on 2026-10-09.
+> This describes that checkpoint, not the current release or current verification status.
+> Historical test results and limitations are retained; private run identifiers, backup
+> identifiers and host-specific observations have been omitted or generalized.
+> See [current project status](../../../status.md) before following any operational steps.
+
+> Checkpoint status: COMPLETE — minimal validation accepted by project owner
 > Decision: GO_TO_PHASE_2_WITH_DEFERRED_EVALUATION
 > Date: 2026-08-09
 
@@ -34,10 +40,10 @@ The `cloud-service` detail endpoint gained one optional query parameter with its
 - Agent module: 27 tests, 0 failures; 2 environment-gated tests skipped in the generic run.
 - New deterministic coverage: three-Tool happy path, evidence citation, unknown evidence rejection, retrieval budget, Tool policy, strict argument types, extra-field rejection, provider-safe names, one-repair limit and prompt-injection boundary.
 - Read-only detail coverage proves `regenerateAbi=false` invokes neither the ABI compiler nor `updateById`.
-- Real local Tool integration: 1 test, 0 failures; about 45 seconds on the first cold compiler path and 1.3 seconds against the final updated temporary `cloud-service` on port 18083.
+- Real local Tool integration: 1 test, 0 failures; about 45 seconds on the first cold compiler path and 1.3 seconds against the final updated temporary `cloud-service` instance.
 - Live chain exercised: code search on the current catalog, contract detail retrieval and sandbox compilation.
 - Live observation contract contains compile status/errors/warnings and Evidence, but not bytecode or ABI.
-- The final live test used `regenerateAbi=false` on the updated service. The temporary port 18083 service was stopped cleanly; the user's existing port 18081 process was not restarted.
+- The final live test used `regenerateAbi=false` on the updated service. The temporary service was stopped cleanly; the existing application process was not restarted.
 - No database migration was enabled and no write Tool was executed.
 
 ## Deferred to Phase 9 Hardening
@@ -59,7 +65,7 @@ The `cloud-service` detail endpoint gained one optional query parameter with its
 
 ### Real Tool chain without model
 
-- Ensure ports 18081 and 19090 are running.
+- Ensure the main backend and contract runtime are running.
 - Run `RUN_AGENT_TOOL_INTEGRATION=true mvn -pl cloud-agent-service -Dtest=AgentToolsLiveIntegrationTest test`.
 - Expect one passing test; no source, bytecode, ABI or credential should appear in output.
 

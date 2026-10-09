@@ -1,25 +1,20 @@
-# ContractSearch Current State
+# Phase 0 Environment Baseline
+
+> **Historical record — 2026-08-09.** Archived on 2026-10-09.
+> This describes that checkpoint, not the current release or current verification status.
+> Historical test results and limitations are retained; private run identifiers, backup
+> identifiers and host-specific observations have been omitted or generalized.
+> See [current project status](../../status.md) before following any operational steps.
 
 > Baseline date: 2026-08-09 (Asia/Shanghai)  
 > Scope: Phase 0 baseline, updated after the 2026-08-09 root-layout cleanup
 
-## Repository boundary
+## Repository boundary at the checkpoint
 
-The Git and application root is `计算机设计大赛2.0/`. All runnable components now live directly below this root.
-
-```text
-计算机设计大赛2.0/
-├── backend/                       Java 17 Maven reactor
-├── frontend/                      Vue 3 + Vite
-├── scse-discover/                 Python/FastAPI import utility
-├── contract-runtime-service/   Node/Express Solidity runtime
-├── lean-runtime-service/       Node/Express Lean checker
-├── database/                   local ignored database seed
-├── docs/                       architecture and runbooks
-└── scripts/                    controlled project scripts
-```
-
-The user approved `计算机设计大赛2.0/` as the Git root. A sanitized baseline repository is created at this root; local dumps, archives, credentials, generated data, dependencies and build output are excluded.
+Runnable services were consolidated directly under the repository root. Local
+database dumps, archives, credentials, generated data, dependencies and build
+output were excluded from version control. Historical local folder names and
+machine paths are omitted here.
 
 ## Build and runtime versions
 
@@ -41,23 +36,16 @@ The user approved `计算机设计大赛2.0/` as the Git root. A sanitized basel
 | host Lean | 4.30.0 |
 | Lean runtime probe | attempted to download 4.32.2 and timed out after 10 seconds |
 
-## Running local topology
+## Historical local service observations
 
-Observed listeners and probes:
+The frontend, database, service discovery, Gateway, main backend and contract
+runtime responded to the recorded probes. The Gateway rejected anonymous
+protected requests with HTTP 401. The Lean endpoint was reachable, but its proof
+probe timed out. Discovery and placeholder auth/user modules were not running.
 
-| Port | Process/component | Probe result |
-|---:|---|---|
-| 5173 | Vue/Vite | HTTP 200 |
-| 5432 | ParadeDB Docker container | PostgreSQL query succeeded |
-| 8848 | Nacos 3.0.3 Docker container | HTTP 200 |
-| 18080 | Spring Cloud Gateway | protected request returned 401 as expected |
-| 18081 | `smart-contract-search-engine` | HTTP and OpenAPI available |
-| 19090 | contract runtime | compile probe passed |
-| 19100 | Lean runtime | endpoint reachable; proof probe timed out |
-| 18000 | discovery service | not running |
-| 18083/18084 | user/auth placeholder modules | not running and not registered |
-
-Nacos reported two services: `cloud-gateway` and `smart-contract-search-engine`.
+Nacos reported the Gateway and main backend services. Individual host listener
+assignments and machine-specific process observations are omitted. These were
+observations at the checkpoint, not a current availability claim.
 
 ## Existing AI and search behavior
 
@@ -74,8 +62,8 @@ Nacos reported two services: `cloud-gateway` and `smart-contract-search-engine`.
 
 - Gateway verifies JWT, removes a caller-supplied `X-User-Id`, and injects its own user ID.
 - Backend accepts `X-User-Id` directly and creates an authenticated Spring Security context from it.
-- Therefore port 18081 must not be publicly reachable. A caller that can reach it can spoof a user ID.
-- Local frontend currently calls the runtime services directly on ports 19090 and 19100.
+- Therefore direct backend access must remain private. A caller that can reach it can spoof a user ID.
+- The frontend at this checkpoint called the local runtime services directly.
 - Gateway and backend CORS are broad; the two Node services also enable broad CORS.
 
 ## Existing persistence behavior

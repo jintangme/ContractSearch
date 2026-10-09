@@ -1,6 +1,12 @@
 # Delivery Stage 2.5 Report: Authoritative Knowledge Base
 
-> Status: COMPLETE  
+> **Historical record — 2026-08-09.** Archived on 2026-10-09.
+> This describes that checkpoint, not the current release or current verification status.
+> Historical test results and limitations are retained; private run identifiers, backup
+> identifiers and host-specific observations have been omitted or generalized.
+> See [current project status](../../../status.md) before following any operational steps.
+
+> Checkpoint status: COMPLETE
 > Next: Delivery Stage 3 — Iterative Agent Answer Loop  
 > Date: 2026-08-09
 
@@ -50,8 +56,8 @@ No GLM or embedding calls were made for this checkpoint.
 
 ## Backup and rollback
 
-- Backup: `backups/contractsearch_pre_stage25_20260809_1528.dump` (Git-ignored), approximately 62 MB.
-- SHA-256: `7c05e94cdc9968cc586ebbdc796916000dc35bc6e57943ddcf11286fb05694ec`.
+A private, Git-ignored database backup was recorded before this checkpoint.
+Backup filenames, hashes and local restore identifiers are not published.
 
 Normal rollback is to disable `AGENT_KNOWLEDGE_ENABLED` and restart only `cloud-agent-service`. The migration and records are additive; do not restore the dump unless physical removal is explicitly required.
 
@@ -68,4 +74,4 @@ Normal rollback is to disable `AGENT_KNOWLEDGE_ENABLED` and restart only `cloud-
 
 - Restart required: `cloud-agent-service` only.
 - No restart required: Vue, Nginx, Gateway, `cloud-service`, PostgreSQL/ParadeDB, Nacos, `contract-runtime-service` and `lean-runtime-service`.
-- The temporary validation instance on port 18084 is not a project dependency and is stopped after verification.
+- The temporary validation instance was not a project dependency and was stopped after verification.

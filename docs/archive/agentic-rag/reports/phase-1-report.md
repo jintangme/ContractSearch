@@ -1,11 +1,17 @@
 # Phase 1 Report: Foundations, Contracts and Evaluation Harness
 
-> Status: COMPLETE — minimal live validation accepted; full protocol matrix deferred to Phase 9
+> **Historical record — 2026-08-09.** Archived on 2026-10-09.
+> This describes that checkpoint, not the current release or current verification status.
+> Historical test results and limitations are retained; private run identifiers, backup
+> identifiers and host-specific observations have been omitted or generalized.
+> See [current project status](../../../status.md) before following any operational steps.
+
+> Checkpoint status: COMPLETE — minimal live validation accepted; full protocol matrix deferred to Phase 9
 > Date: 2026-08-09
 
 ## Outcome
 
-The Java-native Agent foundation is implemented and default-off. `cloud-agent-service` starts on port 18082, reports healthy, rejects direct untrusted Agent requests, and completes a deterministic mock Tool loop with ordered SSE, Evidence and a reviewable Proposal. Existing Chat, Search, Contract Lab and runtime behavior remain unchanged.
+The Java-native Agent foundation is implemented and default-off. `cloud-agent-service` starts behind the Gateway, reports healthy, rejects direct untrusted Agent requests, and completes a deterministic mock Tool loop with ordered SSE, Evidence and a reviewable Proposal. Existing Chat, Search, Contract Lab and runtime behavior remain unchanged.
 
 The Codex process could not inherit the `ZHIPU_API_KEY` stored in another terminal or IDE configuration, so no secret-recovery attempt was made. The project owner subsequently started the service in the correctly configured terminal and confirmed a real `glm-4.5-air` Agent Run succeeded. On 2026-08-09 the owner accepted this as the minimal live validation and deferred the streaming/thinking/invalid-parameter protocol matrix to Phase 9 to avoid unnecessary model-call cost.
 
@@ -30,8 +36,8 @@ No migration was applied to the live `public` schema.
 
 Two disposable schemas were created and automatically removed:
 
-1. `agent_phase1_test_fresh`: V1 applied once; the second migrate executed zero migrations.
-2. `agent_phase1_test_live_clone`: the four relevant live legacy table structures were copied, Flyway baselined the non-empty schema at version 0, V1 applied once, and the second migrate executed zero migrations.
+1. Fresh disposable schema: V1 applied once; the second migrate executed zero migrations.
+2. Disposable schema with cloned legacy tables: the four relevant live legacy table structures were copied, Flyway baselined the non-empty schema at version 0, V1 applied once, and the second migrate executed zero migrations.
 
 Both ran against PostgreSQL 18.3. Flyway 11.8.2 initially reported that PostgreSQL 18 was outside its verified range, so it was replaced with current stable Flyway 13.2.0 and both tests were rerun without that compatibility warning.
 

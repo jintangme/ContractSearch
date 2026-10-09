@@ -1,0 +1,130 @@
+name: ${COMPOSE_PROJECT_NAME:-contractsearch-demo}
+
+# Local demonstration only: every published port is bound to loopback.
+services:
+  db:
+    image: paradedb/paradedb:0.23.0-pg18@sha256:2fb287d7e9da223bb1584a3575f2dde84492882d4df33724646c7e6807adbb44
+    environment:
+      POSTGRES_DB: contractsearch_demo
+      POSTGRES_USER: contractsearch
+      POSTGRES_PASSWORD: ${POSTGRESQL_DB_PASSWORD:?Run python3 scripts/configure-demo.py first}
+    ports:
+      - "127.0.0.1:${DEMO_DB_PORT:-15432}:5432"
+    volumes:
+      - demo-db:/var/lib/postgresql
+      - ./database/bootstrap:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U contractsearch -d contractsearch_demo"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  service:
+    build:
+      context: .
+      dockerfile: deploy/java.Dockerfile
+      args:
+        SERVICE: cloud-service
+    environment:
+      CONTRACT_SERVICE_HOST: 0.0.0.0
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/contractsearch_demo
+      POSTGRESQL_DB_USERNAME: contractsearch
+      POSTGRESQL_DB_PASSWORD: ${POSTGRESQL_DB_PASSWORD:?Configure local environment}
+      JWT_SECRET: ${JWT_SECRET:?Configure local environment}
+      NACOS_DISCOVERY_ENABLED: "false"
+      SPRING_CLOUD_NACOS_CONFIG_ENABLED: "false"
+      SPRING_CLOUD_NACOS_CONFIG_IMPORT_CHECK_ENABLED: "false"
+      ZHIPU_API_KEY: ${ZHIPU_API_KEY:-}
+      DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
+      # Offline file import is disabled in the public-facing demo.
+      CONTRACT_IMPORT_TOKEN: ""
+      CONTRACT_IMPORT_ROOT: ""
+    depends_on:
+      db:
+        condition: service_healthy
+
+  gateway:
+    build:
+      context: .
+      dockerfile: deploy/java.Dockerfile
+      args:
+        SERVICE: cloud-gateway
+    environment:
+      GATEWAY_HOST: 0.0.0.0
+      JWT_SECRET: ${JWT_SECRET:?Configure local environment}
+      NACOS_DISCOVERY_ENABLED: "false"
+      SPRING_CLOUD_NACOS_CONFIG_ENABLED: "false"
+      SPRING_CLOUD_NACOS_CONFIG_IMPORT_CHECK_ENABLED: "false"
+      CONTRACT_SERVICE_GATEWAY_URI: http://service:18081
+      AGENT_SERVICE_GATEWAY_URI: http://agent:18082
+      AGENT_ROUTE_ENABLED: ${AGENT_ROUTE_ENABLED:-false}
+      AGENT_INTERNAL_TOKEN: ${AGENT_INTERNAL_TOKEN:?Configure local environment}
+    depends_on:
+      - service
+
+  runtime:
+    build:
+      context: .
+      dockerfile: deploy/runtime.Dockerfile
+    environment:
+      RUNTIME_PORT: "19090"
+      RUNTIME_HOST: 0.0.0.0
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:19090/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  web:
+    build:
+      context: .
+      dockerfile: deploy/frontend.Dockerfile
+      args:
+        VITE_AGENT_ENABLED: ${AGENT_ENABLED:-false}
+    ports:
+      - "127.0.0.1:${DEMO_HTTP_PORT:-8080}:8080"
+    depends_on:
+      - gateway
+      - runtime
+
+  agent:
+    profiles: [agent]
+    build:
+      context: .
+      dockerfile: deploy/java.Dockerfile
+      args:
+        SERVICE: cloud-agent-service
+    environment:
+      AGENT_SERVICE_HOST: 0.0.0.0
+      AGENT_ENABLED: ${AGENT_ENABLED:-false}
+      AGENT_MINI_LOOP_ENABLED: ${AGENT_MINI_LOOP_ENABLED:-false}
+      AGENT_KNOWLEDGE_ENABLED: ${AGENT_KNOWLEDGE_ENABLED:-false}
+      AGENT_PERSISTENCE_ENABLED: ${AGENT_PERSISTENCE_ENABLED:-false}
+      AGENT_MIGRATIONS_ENABLED: "true"
+      AGENT_INTERNAL_TOKEN: ${AGENT_INTERNAL_TOKEN:?Configure local environment}
+      AGENT_DB_URL: jdbc:postgresql://db:5432/contractsearch_demo
+      AGENT_DB_USERNAME: contractsearch
+      AGENT_DB_PASSWORD: ${POSTGRESQL_DB_PASSWORD:?Configure local environment}
+      AGENT_KNOWLEDGE_CORPUS_NAME: contractsearch
+      AGENT_KNOWLEDGE_CORPUS_VERSION: demo-v1
+      AGENT_CONTRACT_SERVICE_URL: http://service:18081
+      AGENT_RUNTIME_SERVICE_URL: http://runtime:19090
+      AGENT_MODEL: ${AGENT_MODEL:-glm-4.5-air}
+      AGENT_MAX_STEPS: ${AGENT_MAX_STEPS:-6}
+      AGENT_MAX_TOOL_CALLS: ${AGENT_MAX_TOOL_CALLS:-5}
+      AGENT_MAX_RETRIEVAL_ROUNDS: ${AGENT_MAX_RETRIEVAL_ROUNDS:-2}
+      ZHIPU_API_KEY: ${ZHIPU_API_KEY:-}
+      ZHIPU_BASE_URL: ${ZHIPU_BASE_URL:-https://open.bigmodel.cn/api/paas/v4}
+      NACOS_DISCOVERY_ENABLED: "false"
+      SPRING_CLOUD_NACOS_CONFIG_ENABLED: "false"
+      SPRING_CLOUD_NACOS_CONFIG_IMPORT_CHECK_ENABLED: "false"
+    ports:
+      - "127.0.0.1:${DEMO_AGENT_PORT:-18082}:18082"
+    depends_on:
+      db:
+        condition: service_healthy
+      runtime:
+        condition: service_healthy
+
+volumes:
+  demo-db:

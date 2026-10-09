@@ -1,6 +1,12 @@
 # Delivery Stage 2 Report: RAG Data Online
 
-> Status: COMPLETE  
+> **Historical record — 2026-08-09.** Archived on 2026-10-09.
+> This describes that checkpoint, not the current release or current verification status.
+> Historical test results and limitations are retained; private run identifiers, backup
+> identifiers and host-specific observations have been omitted or generalized.
+> See [current project status](../../../status.md) before following any operational steps.
+
+> Checkpoint status: COMPLETE
 > Next: Delivery Stage 3 — Iterative Agent Answer Loop  
 > Date: 2026-08-09
 
@@ -15,7 +21,7 @@ The Agent now has `retrieve_knowledge.v1`, which combines the existing semantic 
 - Applied Flyway V1–V4 to the validated local `public` schema after backup.
 - Corpus: `contractsearch / delivery-stage2-v1`.
 - Corpus remains `BUILDING`, not `ACTIVE`; retrieval requires the explicit configured version.
-- Ingestion job: `0962e955-5a33-46ad-ab42-ab22c88fe371`, checkpoint `4478`, terminal status `PARTIAL` because AST fallback is recorded as a diagnostic outcome.
+- The ingestion job reached terminal status `PARTIAL` because AST fallback is recorded as a diagnostic outcome.
 - Target contracts / ingestion items / aliases: `1887 / 1887 / 1887`.
 - Canonical normalized sources: `1213`; 674 normalized duplicates are preserved as aliases and `SKIPPED` outcomes.
 - Documents / chunks / chunk search rows: `6394 / 95937 / 95937`.
@@ -25,9 +31,8 @@ The Agent now has `retrieve_knowledge.v1`, which combines the existing semantic 
 
 ## Backup and rollback anchor
 
-- Backup file: `backups/contractsearch_pre_stage2_20260809_1445.dump` (ignored by Git).
-- Size: approximately 25 MB.
-- SHA-256: `d2177dd6c40cf7b048164add55d0dcebec87fcea02c294f704f9b26e9788168e`.
+A private, Git-ignored database backup was recorded before this checkpoint.
+Backup filenames, hashes and local restore identifiers are not published.
 
 Normal rollback does not restore the dump: set `AGENT_KNOWLEDGE_ENABLED=false`, restart `cloud-agent-service`, and the Agent falls back to `search_contracts.v1`. V4 is additive and the old Search remains untouched. Use the dump only for an explicitly approved database restore.
 
@@ -74,7 +79,7 @@ This checkpoint deliberately did not run a large model evaluation, create chunk 
 - Required only for future AST ingestion/rebuild: `contract-runtime-service`.
 - No restart required: Vue frontend, Nginx, Gateway, `cloud-service`, PostgreSQL/ParadeDB, Nacos and `lean-runtime-service`.
 
-The temporary validation instances on ports `18083` and `19091` are not production dependencies and should be stopped after verification.
+Temporary validation instances were used only for this checkpoint and are not production dependencies.
 
 ## Known boundaries accepted for delivery
 

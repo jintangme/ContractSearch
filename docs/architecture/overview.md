@@ -1,156 +1,92 @@
-# Architecture Overview
+# Architecture
 
-> This document describes the components as they exist in the repository. It is
-> a reference for reviewers and for future development, not a specification of
-> an idealized system.
+## Purpose and service boundaries
 
-## 1. System context
+ContractSearch 2.0 supports contract reuse through source retrieval, evidence
+inspection and local experiments. Java owns business APIs and Agent control;
+Node owns Solidity execution tools; Python discovery is optional and offline.
 
-ContractSearch is a web platform that lets users search a repository of real
-smart contracts, inspect their source, and run AI-assisted analysis and
-verification. It is composed of a Vue single-page application, a set of Spring
-Boot services behind a Spring Cloud Gateway, two small Node runtimes for
-Solidity and Lean execution, and a Python ingestion utility.
+| Component | Responsibility | Default host port |
+|---|---|---:|
+| Vue / Vite | Search, detail, conversation, precheck and workspace UI | 5173 development |
+| Nginx demo | Static frontend and local reverse proxy | 8080 |
+| cloud-gateway | JWT validation, identity-header sanitization, routing | 18080 |
+| cloud-service | Contracts, search, profiles, favorites, drafts, precheck | 18081 |
+| cloud-agent-service | Bounded loop, knowledge retrieval, evidence and terminal archive | 18082 |
+| contract-runtime-service | solc AST/compilation, shared Ganache deployment/calls | 19090 |
+| lean-runtime-service | Optional local Lean program checking | 19100 |
+| scse-discover | Dune/Etherscan discovery and shared-file import callback | 18000 |
 
-```mermaid
-flowchart LR
-    User -->|HTTPS| FE[Vue 3 SPA]
-    FE --> GW[Spring Cloud Gateway]
-    GW --> MAIN[cloud-service]
-    GW --> AGENT[cloud-agent-service]
-    FE --> RUNTIME[contract-runtime-service]
-    FE --> LEAN[lean-runtime-service]
-    MAIN --> DB[(PostgreSQL / ParadeDB)]
-    AGENT --> DB
-    AGENT --> MAIN
-    AGENT --> RUNTIME
-    MAIN --> EMB[DashScope Embeddings]
-    MAIN --> GLM[Zhipu GLM]
-    AGENT --> GLM
-    DISCOVER[scse-discover] --> DB
-```
+Host services default to loopback. Compose explicitly binds internal services
+inside its own network; only the documented loopback ports are published.
+Standalone auth/user modules are reserved and excluded from the default Maven
+reactor. Actual authentication and profile behavior live in cloud-service.
 
-## 2. Services
+## Retrieval and knowledge
 
-| Service | Runtime | Port | Responsibility |
-|---|---|---:|---|
-| `cloud-gateway` | Spring Boot | 18080 | Single API entry. Validates JWT, removes a caller-supplied `X-User-Id`, injects the trusted user id and the internal agent token, routes to backend services. |
-| `cloud-service` | Spring Boot | 18081 | Main business logic: contracts, groups, search, users, favorites, drafts, uploads, AI chat, AI precheck. Also calls DashScope for embeddings. |
-| `cloud-agent-service` | Spring Boot | 18082 | Agent control plane: run/session lifecycle, state machine, bounded loop, tool registry and policy, knowledge retrieval, evidence, persistence. |
-| `contract-runtime-service` | Node/Express | 19090 | Solidity compilation (solc 0.8.35), AST metadata extraction for ingestion, in-memory Ganache sandbox deploy and calls. |
-| `lean-runtime-service` | Node/Express | 19100 | Runs the Lean compiler on submitted Lean source and returns structured diagnostics. Does not prove Solidity equivalence. |
-| `scse-discover` | Python/FastAPI | 18000 | Offline discovery: Dune queries plus Etherscan enrichment into Parquet, then a callback into `cloud-service`. |
-| `frontend` | Vue 3 / Vite | 5173 dev | SPA: browse, search, contract detail, AI conversation, security precheck, Contract Lab, profile. |
-| `cloud-auth-service` / `cloud-user-service` | Spring Boot | - | Reserved modules. Not part of the running topology and not required to start the system. |
+1. Normalize plain Solidity, Etherscan Standard JSON and multi-file source.
+2. Deduplicate source bodies while retaining contract provenance.
+3. Parse AST declarations with the runtime; record lexical/file fallback when
+   the pinned compiler cannot parse a source.
+4. Store versioned sources, documents, chunks, aliases and ingestion outcomes.
+5. Retrieve from description semantic search, source BM25, chunk text search
+   and pinned authoritative references.
+6. Fuse channel ranks with RRF and return evidence locations and trust labels.
 
-## 3. Data model
+Description vectors use 768 dimensions. The chunk channel uses PostgreSQL text
+search; the existence of an embedding column does not mean every chunk has an
+embedding. Code-mode search is BM25. Pure Chinese questions depend on the
+semantic path or a suitable query rewrite because chunk token extraction is
+focused on Latin/code tokens.
 
-The platform uses a single PostgreSQL/ParadeDB database with the `vector` and
-`pg_search` extensions.
+## Agent control
 
-- **Application tables** (`public` schema): `smart_contract`, `user_contract_record`,
-  `ai_chat_session`, `ai_chat_message`, `ai_chat_attachment`, `group`, favorites,
-  uploads, check records.
-- **Agent tables** (Flyway V1, V6): `agent_session`, `agent_run`, `agent_event`,
-  `agent_evidence`, `agent_proposal`.
-- **Knowledge tables** (Flyway V2-V5): `knowledge_corpus_version`,
-  `knowledge_source`, `knowledge_document`, `knowledge_chunk`,
-  `knowledge_source_alias`, `knowledge_ingestion_job`,
-  `knowledge_ingestion_item`, `knowledge_ingestion_error`,
-  `knowledge_chunk_search`.
+The model chooses a structured action after each observation. Tools are limited
+to retrieve, search, read, compile and read-only precheck. Budgets, argument
+validation, repeated-call control and evidence ID validation are enforced in
+Java. Retrieved source, reference text and user input are wrapped as untrusted
+data, not granted tool authority.
 
-Each knowledge chunk stores its document, optional parent chunk, chunk kind,
-symbol and signature, heading path, display and embedding text, line range,
-trust level, evidence class, context role, content hash, chunker version, and an
-optional embedding. The `knowledge_chunk_search` table holds the text-search
-projection used by the retrieval channel.
+Runs execute asynchronously in a bounded thread pool. The UI polls snapshots
+and cancels stale requests on navigation. Source cards preserve distinct
+locations, prioritize cited evidence and support expanding every available
+source. Optional database persistence archives terminal state; interrupted
+execution is not resumable and active state is not a distributed queue.
 
-## 4. Knowledge ingestion
+## Data initialization
 
-```mermaid
-flowchart TD
-    A[Existing contract rows] --> B{Source format router}
-    B -->|Plain Solidity| C[Normalize encoding / line endings]
-    B -->|Etherscan Standard JSON| C
-    B -->|Multi-file JSON| C
-    C --> D[Dedup by normalized hash]
-    D --> E[AST parse via contract runtime]
-    E -->|success| F[Function/modifier/contract chunks]
-    E -->|failure| G[Deterministic file / lexical fallback]
-    F --> H[Metadata + trust classification]
-    G --> H
-    H --> I[(knowledge_chunk + search index)]
-```
+`database/bootstrap/001-schema.sql` provides the fresh business schema and
+required extensions/indexes. `002-demo.sql` inserts three original samples and
+a group, without user accounts or embeddings. Agent V1–V6 migrations add the
+knowledge and audit structures. Some legacy business startup DDL still exists;
+unifying all schema evolution remains follow-up work.
 
-Authoritative documentation (ERC/EIP standards, Solidity documentation,
-OpenZeppelin references, OWASP) is imported from a fixed manifest
-(`docs/agentic-rag/knowledge-sources-v1.json`) that pins source URL, version or
-commit, license, and content hash. Import is idempotent for the same
-source/version/content hash.
+Discovery writes Parquet locally and sends its path to cloud-service. These
+processes must share the configured import directory. A network callback alone
+does not transfer the file. The callback is unavailable through Gateway and
+requires a separate token plus constrained real-path validation.
 
-## 5. Retrieval
+## Execution boundaries
 
-- **Semantic channel** - DashScope `text-embedding-v4`, truncated to 768
-  dimensions to match the existing `vector(768)` columns and the HNSW indexes.
-- **Keyword channel** - ParadeDB BM25 over descriptions and source code.
-- **Chunk text channel** - PostgreSQL `tsvector`/GIN over knowledge chunks.
-- **Authoritative reference channel** - source-key and coverage matching for
-  standards and library references.
+The runtime bundles Solidity 0.8.35. AST extraction always uses this bundled
+compiler, while workspace compilation can select a known version for the
+source pragma or an explicit compiler choice. The remote version map contains
+only 0.4.26, 0.5.17, 0.6.12, 0.7.6 and 0.8.20; first use requires a network
+download, and arbitrary exact pragma versions are not guaranteed to work.
+Ganache runs the Shanghai hardfork. Compilers at 0.8.20 or newer explicitly
+target Shanghai; older compilers retain their default EVM target. The workspace
+compiles a single source unit, so historical multi-file sources can require
+additional preparation. The EVM is shared and transient, not isolated by user.
 
-Channels are fused with Reciprocal Rank Fusion (`k = 60`). Retrieval returns the
-per-channel ranks, fusion score, trust level, source reference, and line span so
-results remain explainable and can be degraded channel by channel.
+Lean is separate and excluded from both the Agent tool list and demo reverse
+proxy. Rejecting obvious unfinished proofs improves result labeling; it is not
+a sandbox and does not establish Solidity equivalence.
 
-## 6. Agent control plane
+Precheck combines heuristics and optional GLM assistance. Citation existence
+and compilation success must never be presented as security guarantees.
 
-Package layout in `cloud-agent-service`:
+## Design records
 
-```text
-config/         properties, startup validation, execution thread pool
-controller/     run, knowledge retrieval, knowledge ingestion endpoints
-domain/         run state, events, evidence, side effects, trust levels
-knowledge/      source routing, AST chunking, stores, retrieval
-migration/      Flyway runner gated by AGENT_MIGRATIONS_ENABLED
-security/       internal-token filter
-service/        mini loop engine, structured action provider, run archive
-state/          state machine and transition rules
-tool/           tool interface, registry, policy, argument validation, tools
-observability/  trace id filter
-```
-
-State machine (implemented in `domain/AgentRunState` and `state/AgentStateMachine`):
-
-```text
-RECEIVED -> PLAN -> TOOL_CALL -> OBSERVE -> PLAN ...
-                        OBSERVE -> SYNTHESIZE -> COMPLETE
-any non-terminal -> FAILED
-```
-
-The loop is gated by `MiniLoopToolPolicy`, which allows exactly
-`search_contracts.v1`, `retrieve_knowledge.v1`, `get_contract.v1`,
-`compile_contract.v1`, and `precheck_contract.v1`, and only permits `READ` and
-`EXECUTE_SANDBOXED` side effects. Every tool invocation is validated against its
-JSON argument rules before execution and results are recorded as evidence.
-
-## 7. Security boundaries
-
-- Public traffic terminates at Nginx; internal service ports are expected to be
-  reachable only from the host or private network.
-- The gateway strips a client-provided `X-User-Id` and internal token, then
-  injects trusted values. The agent service rejects requests without the shared
-  internal token.
-- Agent tools cannot supply target hosts, filesystem paths, or shell arguments.
-  Dependency URLs are fixed to allowlisted local services.
-- Retrieved content is treated as untrusted data and wrapped before it reaches
-  the model.
-- Feature flags (`AGENT_ENABLED`, `AGENT_ROUTE_ENABLED`, `AGENT_KNOWLEDGE_ENABLED`,
-  `AGENT_PERSISTENCE_ENABLED`) allow the agent layer to be disabled without
-  affecting contract search, detail, precheck, or Contract Lab.
-
-## 8. Deployment
-
-A single Ubuntu server is the reference deployment: Nginx serves the built
-frontend and proxies to the services, which run as systemd units. Nacos is
-optional; small deployments use static service URLs. The detailed, tested
-procedure (including database restore and environment variables) is kept in
-[`../deployment-guide.zh-CN.md`](../deployment-guide.zh-CN.md).
+See the [Agent ADRs](../agentic-rag/adr/ADR-001-service-boundary.md),
+[API contract](../agentic-rag/openapi/agent-api-v1.yaml),
+[current status](../status.md) and [historical archive](../archive/README.md).

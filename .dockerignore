@@ -1,0 +1,22 @@
+# Allowlist build inputs. Private dumps, environment, Git and backups never enter a build context.
+**
+!backend/
+!backend/**
+!frontend/
+!frontend/**
+!contract-runtime-service/
+!contract-runtime-service/**
+!deploy/
+!deploy/**
+**/target
+**/node_modules
+**/dist
+**/data
+**/.env
+**/.env.*
+**/.DS_Store
+**/*.log
+**/*.dump
+**/*.pem
+**/*.key
+**/.git
