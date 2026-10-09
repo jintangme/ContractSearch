@@ -3,6 +3,7 @@ import { ref, computed } from 'vue'
 import { authApi } from '@/api'
 import { useUserStore } from '@/stores/user'
 import router from '@/router'
+import { features } from '@/config/features'
 
 export const useAuthStore = defineStore('auth', () => {
   const token = ref(localStorage.getItem('token') || null)
@@ -24,7 +25,7 @@ export const useAuthStore = defineStore('auth', () => {
       avatarHistory: res.data.avatarHistory
     })
     const redirect = router.currentRoute.value.query.redirect
-    router.push(typeof redirect === 'string' && redirect.startsWith('/') ? redirect : '/conversation')
+    router.push(typeof redirect === 'string' && redirect.startsWith('/') ? redirect : features.homeRoute)
   }
 
   // 注册：成功后跳转到登录页

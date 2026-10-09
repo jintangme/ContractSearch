@@ -11,7 +11,7 @@
       <div class="auth-header">
         <img class="auth-logo" :src="csLogo" alt="CS Logo" />
         <h1 class="auth-title">创建账号</h1>
-        <p class="auth-subtitle">ContractSearch · 智能合约开发与安全验证平台</p>
+        <p class="auth-subtitle">ContractSearch · 智能合约检索与分析工作台</p>
       </div>
 
       <form class="auth-form" @submit.prevent="handleRegister">
@@ -45,7 +45,7 @@
             class="form-input"
             :class="{ error: errors.email }"
             type="email"
-            placeholder="邮箱（example@email.com）"
+            placeholder="邮箱（user@example.com）"
             autocomplete="email"
           />
           <p v-if="errors.email" class="form-error">{{ errors.email }}</p>

@@ -1,6 +1,11 @@
 <template>
   <main class="conversation-page">
-    <section class="conversation-shell">
+    <section v-if="!features.agentEnabled" class="conversation-shell mode-notice" aria-labelledby="agent-mode-title">
+      <h1 id="agent-mode-title">智能对话尚未启用</h1>
+      <p>当前为基础模式，可使用合约浏览、代码搜索和合约实验室。智能对话需要部署者配置模型服务并启用完整模式。</p>
+      <router-link to="/search">前往搜索合约</router-link>
+    </section>
+    <section v-else class="conversation-shell">
       <header class="conversation-card-head">
         <div class="conversation-title-group">
           <button class="new-chat-button" type="button" @click="resetConversation">新对话</button>
@@ -43,33 +48,10 @@
             </div>
             <MarkdownMessage v-if="message.role === 'assistant' && !message.loading" :content="message.content" />
             <p v-if="message.role !== 'assistant'" class="message-content">{{ message.content }}</p>
-            <section v-if="message.agentRun?.state === 'COMPLETE' && message.agentRun?.evidence?.length && !message.loading" class="answer-sources">
-              <details>
-                <summary title="查看参考来源" aria-label="查看参考来源">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
-                    <path d="M10.6 13.4a4.5 4.5 0 0 0 6.36 0l2.12-2.12a4.5 4.5 0 0 0-6.36-6.36L11.5 6.14" />
-                    <path d="M13.4 10.6a4.5 4.5 0 0 0-6.36 0l-2.12 2.12a4.5 4.5 0 0 0 6.36 6.36l1.22-1.22" />
-                  </svg>
-                </summary>
-                <div class="source-list">
-                  <details v-for="(item, index) in message.agentRun.evidence" :key="item.id" class="source-item">
-                    <summary>
-                      <i>{{ index + 1 }}</i>
-                      <strong>{{ item.title || item.sourceType }}</strong>
-                      <span :class="`trust-badge trust-badge--${String(item.trustLevel || '').toLowerCase()}`">{{ trustLevelLabel(item.trustLevel) }}</span>
-                    </summary>
-                    <div class="source-detail">
-                      <p>{{ item.excerpt || '暂无摘要' }}</p>
-                      <small v-if="item.relatedCount > 1">已合并 {{ item.relatedCount }} 条相关依据</small>
-                      <small>{{ item.sourceRef }}</small>
-                    </div>
-                  </details>
-                  <p v-if="message.agentRun.hiddenEvidenceCount" class="source-more">
-                    另有 {{ message.agentRun.hiddenEvidenceCount }} 个来源已收起
-                  </p>
-                </div>
-              </details>
-            </section>
+            <EvidenceSources
+              v-if="message.agentRun?.state === 'COMPLETE' && !message.loading"
+              :items="message.agentRun.evidence"
+            />
             <div v-if="message.attachments?.length" class="message-attachments">
               <span v-for="attachment in message.attachments" :key="attachment.localId || attachment.id" class="attachment-chip">
                 {{ attachment.fileName }}
@@ -117,7 +99,7 @@
           <textarea
             v-model="inputText"
             placeholder="询问合约、链上逻辑或安全问题..."
-            :disabled="isSending"
+            :disabled="isSending || isLoadingSession"
             @keydown="handleInputKeydown"
           ></textarea>
         </div>
@@ -217,8 +199,16 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { agentApi, contractApi } from '@/api'
 import MarkdownMessage from '@/components/MarkdownMessage.vue'
+import EvidenceSources from '@/features/conversation/EvidenceSources.vue'
+import { prepareEvidence, citedEvidenceIds } from '@/features/conversation/evidence'
+import { createLatestTaskController, pollAgentRun } from '@/features/conversation/tasks'
+import { features } from '@/config/features'
 
 const DETAIL_TO_AGENT_KEY = 'contractDetailToAgentContext'
+const conversationTasks = createLatestTaskController()
+const sessionTasks = createLatestTaskController()
+const attachmentTasks = createLatestTaskController()
+let disposed = false
 
 const currentAgentSessionId = ref(null)
 const inputText = ref('')
@@ -233,12 +223,13 @@ const pickerType = ref('')
 const contractQuery = ref('')
 const contractOptions = ref([])
 const isSending = ref(false)
+const isLoadingSession = ref(false)
 const errorMessage = ref('')
 const messageListRef = ref(null)
 const deleteConfirm = ref({ open: false, mode: 'delete', session: null })
 const copiedMessageId = ref('')
 
-const canSend = computed(() => inputText.value.trim().length > 0 && !isSending.value)
+const canSend = computed(() => inputText.value.trim().length > 0 && !isSending.value && !isLoadingSession.value)
 const currentConversationTitle = computed(() => {
   if (messages.value.length && !currentAgentSessionId.value) return 'AI 对话'
   if (!currentAgentSessionId.value) return '新对话'
@@ -257,19 +248,30 @@ const pickerItems = computed(() => {
 watch(messages, () => scrollToBottom(), { deep: true })
 
 onMounted(async () => {
-  await loadSessions()
-  await consumeContractDetailTransfer()
+  if (!features.agentEnabled) return
+  const task = conversationTasks.begin()
   window.addEventListener('conversation:new', resetConversation)
+  await loadSessions()
+  if (!disposed && task.isCurrent()) await consumeContractDetailTransfer()
 })
 
 onBeforeUnmount(() => {
+  disposed = true
+  conversationTasks.cancel()
+  sessionTasks.cancel()
+  attachmentTasks.cancel()
   window.removeEventListener('conversation:new', resetConversation)
 })
 
 function resetConversation() {
+  conversationTasks.cancel()
+  attachmentTasks.cancel()
+  isSending.value = false
+  isLoadingSession.value = false
   currentAgentSessionId.value = null
   messages.value = []
   attachments.value = []
+  attachmentPreview.value = null
   inputText.value = ''
   errorMessage.value = ''
 }
@@ -279,20 +281,34 @@ function useSuggestion(text) {
 }
 
 async function loadSessions() {
+  if (disposed || !features.agentEnabled) return
+  const task = sessionTasks.begin()
   try {
-    const response = await agentApi.listSessions()
+    const response = await agentApi.listSessions({ signal: task.signal })
+    task.assertCurrent()
     sessions.value = Array.isArray(response) ? response : []
   } catch {
-    sessions.value = []
+    if (task.isCurrent()) sessions.value = []
   }
 }
 
 async function loadSession(id) {
+  const task = conversationTasks.begin()
+  attachmentTasks.cancel()
+  isSending.value = false
+  isLoadingSession.value = true
+  messages.value = messages.value.map(message => message.loading ? {
+    ...message,
+    loading: false,
+    content: '已停止跟踪此任务，完成后可从对话记录查看。',
+    agentRun: null,
+  } : message)
   try {
     const [session, runs] = await Promise.all([
-      agentApi.getSession(id),
-      agentApi.getSessionRuns(id),
+      agentApi.getSession(id, { signal: task.signal }),
+      agentApi.getSessionRuns(id, { signal: task.signal }),
     ])
+    task.assertCurrent()
     currentAgentSessionId.value = session?.id || id
     messages.value = (Array.isArray(runs) ? runs : []).flatMap(run => [
       {
@@ -312,9 +328,12 @@ async function loadSession(id) {
       },
     ])
     attachments.value = []
+    attachmentPreview.value = null
     historyOpen.value = false
   } catch {
-    errorMessage.value = '加载失败，请稍后重试'
+    if (task.isCurrent()) errorMessage.value = '加载失败，请稍后重试'
+  } finally {
+    if (task.isCurrent()) isLoadingSession.value = false
   }
 }
 
@@ -363,7 +382,8 @@ async function confirmClearSessions() {
 
 async function sendMessage() {
   const text = inputText.value.trim()
-  if (!text || isSending.value) return
+  if (!features.agentEnabled || !text || isSending.value || isLoadingSession.value) return
+  const task = conversationTasks.begin()
   isSending.value = true
   errorMessage.value = ''
   const workspaceContext = buildWorkspaceContext(attachments.value)
@@ -388,28 +408,37 @@ async function sendMessage() {
   attachments.value = []
   attachmentPreview.value = null
   try {
-    await sendAgentMessage({ text, assistantLocalId, workspaceContext })
+    await sendAgentMessage({ text, assistantLocalId, workspaceContext, task })
   } finally {
-    isSending.value = false
+    if (task.isCurrent()) isSending.value = false
   }
 }
 
-async function sendAgentMessage({ text, assistantLocalId, workspaceContext }) {
+async function sendAgentMessage({ text, assistantLocalId, workspaceContext, task }) {
   try {
     if (!currentAgentSessionId.value) {
       const session = await agentApi.createSession({
         title: summarizeSessionTitle(text),
         workspaceContext,
-      })
+      }, { signal: task.signal })
+      task.assertCurrent()
       currentAgentSessionId.value = session?.id || null
     }
     const createdRun = await agentApi.createRun({
       sessionId: currentAgentSessionId.value,
       task: text,
       workspaceContext,
-    })
+    }, { signal: task.signal })
+    task.assertCurrent()
     updateAgentProgress(assistantLocalId, createdRun)
-    const run = await waitForAgentRun(createdRun?.id, assistantLocalId)
+    const run = await pollAgentRun(createdRun?.id, agentApi.getRun, {
+      signal: task.signal,
+      onProgress: run => {
+        task.assertCurrent()
+        updateAgentProgress(assistantLocalId, run)
+      },
+    })
+    task.assertCurrent()
     const agentRun = summarizeAgentRun(run)
     const completed = run?.state === 'COMPLETE'
     replaceMessage(assistantLocalId, {
@@ -424,6 +453,7 @@ async function sendAgentMessage({ text, assistantLocalId, workspaceContext }) {
     })
     await loadSessions()
   } catch (error) {
+    if (!task.isCurrent()) return
     replaceMessage(assistantLocalId, {
       localId: assistantLocalId,
       role: 'assistant',
@@ -445,7 +475,7 @@ async function sendAgentMessage({ text, assistantLocalId, workspaceContext }) {
 
 function summarizeAgentRun(run = {}) {
   const events = Array.isArray(run.events) ? run.events : []
-  const evidenceSummary = summarizeEvidence(run.evidence)
+  const evidence = prepareEvidence(run.evidence, citedEvidenceIds(events))
   return {
     id: run.id,
     state: run.state || 'FAILED',
@@ -456,48 +486,8 @@ function summarizeAgentRun(run = {}) {
     toolCalls: Number(run.toolCalls || 0),
     retrievalRounds: Number(run.retrievalRounds || 0),
     timeline: buildAgentTimeline(events, run.state),
-    evidence: evidenceSummary.items,
-    evidenceTotal: evidenceSummary.total,
-    hiddenEvidenceCount: evidenceSummary.hidden,
+    evidence,
   }
-}
-
-function summarizeEvidence(rawEvidence) {
-  const trustPriority = { VERIFIED: 0, AUTHORITATIVE: 1, CURATED: 2, TOOL_GENERATED: 3, COMMUNITY: 4, USER_PROVIDED: 5, UNTRUSTED: 6 }
-  const grouped = new Map()
-  const evidence = Array.isArray(rawEvidence) ? rawEvidence : []
-  evidence.forEach(item => {
-    const title = String(item?.title || item?.sourceType || '参考资料').trim()
-    const key = `${item?.sourceType || ''}:${title}`
-    const existing = grouped.get(key)
-    if (existing) {
-      existing.relatedCount += 1
-      return
-    }
-    grouped.set(key, {
-      ...item,
-      title,
-      excerpt: String(item?.excerpt || '').replace(/\s+/g, ' ').trim().slice(0, 360),
-      sourceRef: String(item?.sourceRef || ''),
-      relatedCount: 1,
-    })
-  })
-  const unique = [...grouped.values()].sort((a, b) =>
-    (trustPriority[a.trustLevel] ?? 9) - (trustPriority[b.trustLevel] ?? 9))
-  const items = unique.slice(0, 5)
-  return { items, total: unique.length, hidden: Math.max(0, unique.length - items.length) }
-}
-
-async function waitForAgentRun(runId, assistantLocalId) {
-  if (!runId) throw new Error('Agent Run ID missing')
-  const deadline = Date.now() + 300000
-  while (Date.now() < deadline) {
-    await delay(700)
-    const run = await agentApi.getRun(runId)
-    updateAgentProgress(assistantLocalId, run)
-    if (['COMPLETE', 'FAILED'].includes(run?.state)) return run
-  }
-  throw new Error('Agent 执行超时')
 }
 
 function updateAgentProgress(assistantLocalId, run = {}) {
@@ -548,10 +538,6 @@ function buildAgentTimeline(events = [], runState = 'RECEIVED') {
   return timeline
 }
 
-function delay(ms) {
-  return new Promise(resolve => window.setTimeout(resolve, ms))
-}
-
 function buildWorkspaceContext(items = []) {
   const selectedContract = items.find(item => item.sourceType === 'contract' && Number(item.contractId) > 0)
   const context = { origin: 'conversation' }
@@ -592,18 +578,6 @@ function toolActivityLabel(tool, completed) {
   return labels[tool]?.[completed ? 1 : 0] || (completed ? '已完成一项检查' : '正在检查相关信息')
 }
 
-function trustLevelLabel(level) {
-  return {
-    VERIFIED: '已验证',
-    AUTHORITATIVE: '权威来源',
-    CURATED: '精选资料',
-    COMMUNITY: '社区资料',
-    USER_PROVIDED: '用户提供',
-    TOOL_GENERATED: '工具结果',
-    UNTRUSTED: '待核验',
-  }[level] || '参考资料'
-}
-
 async function copyAssistantMessage(message) {
   const content = String(message?.content || '')
   if (!content.trim()) return
@@ -634,8 +608,6 @@ function replaceMessage(localId, nextMessage) {
   const index = messages.value.findIndex(item => (item.localId || item.id) === localId)
   if (index >= 0) {
     messages.value.splice(index, 1, nextMessage)
-  } else {
-    messages.value.push(nextMessage)
   }
 }
 
@@ -664,8 +636,10 @@ function closePicker() {
 }
 
 async function attachContract(item) {
+  const task = attachmentTasks.begin()
   try {
-    const response = await contractApi.getContractDetail(item.id)
+    const response = await contractApi.getContractDetail(item.id, { signal: task.signal })
+    task.assertCurrent()
     const detail = response?.data || item
     addAttachment({
       contractId: Number(detail.id || item.id),
@@ -683,7 +657,7 @@ async function attachContract(item) {
     })
     closePicker()
   } catch {
-    errorMessage.value = '附件解析失败'
+    if (task.isCurrent()) errorMessage.value = '附件解析失败'
   }
 }
 
@@ -691,11 +665,13 @@ async function consumeContractDetailTransfer() {
   const raw = sessionStorage.getItem(DETAIL_TO_AGENT_KEY)
   if (!raw) return
   sessionStorage.removeItem(DETAIL_TO_AGENT_KEY)
+  const task = attachmentTasks.begin()
   try {
     const transfer = JSON.parse(raw)
     const contractId = Number(transfer?.contractId)
     if (!Number.isInteger(contractId) || contractId <= 0) return
-    const response = await contractApi.getContractDetail(contractId)
+    const response = await contractApi.getContractDetail(contractId, { signal: task.signal })
+    task.assertCurrent()
     const detail = response?.data
     if (!detail) throw new Error('Contract not found')
     addAttachment({
@@ -714,7 +690,7 @@ async function consumeContractDetailTransfer() {
     })
     inputText.value = `请解读 ${detail.contractName || '当前合约'}，说明其核心功能、权限结构、主要风险和适用场景。`
   } catch {
-    errorMessage.value = '无法引用该合约，请重新选择'
+    if (task.isCurrent()) errorMessage.value = '无法引用该合约，请重新选择'
   }
 }
 
@@ -778,6 +754,11 @@ function scrollToBottom() {
 </script>
 
 <style scoped>
+.mode-notice { padding: 40px; min-height: 240px; align-self: start; }
+.mode-notice h1 { margin: 0; font-size: 24px; }
+.mode-notice p { color: #667085; line-height: 1.8; max-width: 640px; }
+.mode-notice a { color: #344054; text-decoration: underline; }
+
 .conversation-page {
   height: calc(100vh - 64px);
   min-height: 620px;
@@ -1047,129 +1028,6 @@ function scrollToBottom() {
 
 @keyframes activity-pulse {
   50% { opacity: 0.45; transform: scale(0.82); }
-}
-
-.answer-sources {
-  margin-top: 7px;
-}
-
-.answer-sources > details > summary {
-  width: 28px;
-  height: 28px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 8px;
-  color: #98a2b3;
-  cursor: pointer;
-  list-style: none;
-  transition: color 0.16s ease, background 0.16s ease;
-}
-
-.answer-sources > details > summary::-webkit-details-marker {
-  display: none;
-}
-
-.answer-sources > details > summary::marker {
-  content: '';
-}
-
-.answer-sources > details > summary:hover {
-  color: #344054;
-  background: #f3f4f6;
-}
-
-.answer-sources > details > summary svg {
-  width: 16px;
-  height: 16px;
-}
-
-.source-list {
-  margin-top: 8px;
-  border-top: 1px solid #eef1f5;
-}
-
-.source-item {
-  border-bottom: 1px solid #eef1f5;
-}
-
-.source-item > summary {
-  min-height: 42px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: #344054;
-  cursor: pointer;
-  list-style: none;
-}
-
-.source-item > summary::-webkit-details-marker {
-  display: none;
-}
-
-.source-item > summary i {
-  width: 20px;
-  height: 20px;
-  flex: 0 0 20px;
-  border-radius: 6px;
-  background: #f3f5f7;
-  color: #667085;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 10px;
-  font-style: normal;
-}
-
-.source-item > summary strong {
-  min-width: 0;
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: #344054;
-  font-size: 12px;
-  font-weight: 650;
-}
-
-.source-detail {
-  padding: 0 4px 10px 28px;
-}
-
-.source-detail p {
-  margin: 0 0 6px;
-  color: #667085;
-  font-size: 12px;
-  line-height: 1.55;
-}
-
-.source-detail small {
-  display: block;
-  margin-top: 3px;
-  color: #98a2b3;
-  font-size: 10px;
-  word-break: break-all;
-}
-
-.source-more {
-  margin: 9px 0 0;
-  color: #98a2b3;
-  font-size: 11px;
-}
-
-.trust-badge {
-  padding: 2px 6px;
-  border-radius: 999px;
-  background: #eef2f6;
-  color: #475467;
-  font-size: 10px;
-  font-weight: 800;
-}
-
-.trust-badge--authoritative,
-.trust-badge--verified {
-  background: #e9ecef;
-  color: #344054;
 }
 
 .message-actions {

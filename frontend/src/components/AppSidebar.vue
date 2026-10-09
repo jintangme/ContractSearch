@@ -25,13 +25,13 @@
     </div>
 
     <nav class="sidebar-nav">
-      <router-link to="/conversation" class="nav-item" active-class="nav-item--active" title="对话" @click="handleConversationNav">
+      <router-link to="/conversation" class="nav-item" active-class="nav-item--active" :title="features.agentEnabled ? '对话' : '智能对话尚未启用'" @click="handleConversationNav">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z" />
           <path d="M8 9h8" />
           <path d="M8 13h5" />
         </svg>
-        <span>对话</span>
+        <span>{{ features.agentEnabled ? '对话' : '对话（未启用）' }}</span>
       </router-link>
 
       <router-link to="/search" class="nav-item" active-class="nav-item--active" title="搜索合约">
@@ -108,6 +108,7 @@
 
 <script setup>
 import { computed } from 'vue'
+import { features } from '@/config/features'
 import { useAuthStore } from '@/stores/auth'
 import csLogo from '@/assets/cs-logo.png'
 
@@ -128,6 +129,7 @@ function handleLogout() {
 }
 
 function handleConversationNav() {
+  if (!features.agentEnabled) return
   window.dispatchEvent(new CustomEvent('conversation:new'))
 }
 </script>

@@ -159,6 +159,7 @@
 </template>
 
 <script setup>
+import { features } from '@/config/features'
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { searchApi } from '@/api'
@@ -167,7 +168,7 @@ import ContractListWithPagination from '@/components/ContractListWithPagination.
 const router = useRouter()
 
 const keyword = ref('')
-const searchMode = ref('semantic')
+const searchMode = ref(features.defaultSearchMode)
 const loading = ref(false)
 const error = ref('')
 const hasSearched = ref(false)

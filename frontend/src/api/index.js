@@ -41,6 +41,7 @@ http.interceptors.request.use((config) => {
 http.interceptors.response.use(
   (res) => res.data,
   (err) => {
+    if (axios.isCancel(err)) return Promise.reject(err)
     if (err.response?.status === 401 || err.response?.status === 403) {
       localStorage.removeItem('token')
       if (window.location.pathname !== '/login') {
@@ -111,13 +112,13 @@ export const conversationApi = {
 
 // ===================== Agent Workspace API（默认由后端 feature flag 关闭） =====================
 export const agentApi = {
-  createSession: (data) => http.post('/agent/v1/sessions', data),
-  listSessions: () => http.get('/agent/v1/sessions'),
-  getSession: (id) => http.get(`/agent/v1/sessions/${id}`),
-  getSessionRuns: (id) => http.get(`/agent/v1/sessions/${id}/runs`),
+  createSession: (data, options) => http.post('/agent/v1/sessions', data, options),
+  listSessions: (options) => http.get('/agent/v1/sessions', options),
+  getSession: (id, options) => http.get(`/agent/v1/sessions/${id}`, options),
+  getSessionRuns: (id, options) => http.get(`/agent/v1/sessions/${id}/runs`, options),
   deleteSession: (id) => http.delete(`/agent/v1/sessions/${id}`),
-  createRun: (data) => http.post('/agent/v1/runs', data, { timeout: 30000 }),
-  getRun: (id) => http.get(`/agent/v1/runs/${id}`),
+  createRun: (data, options) => http.post('/agent/v1/runs', data, { timeout: 30000, ...options }),
+  getRun: (id, options) => http.get(`/agent/v1/runs/${id}`, options),
   getEvidence: (id) => http.get(`/agent/v1/runs/${id}/evidence`),
   getProposals: (id) => http.get(`/agent/v1/runs/${id}/proposals`),
 
@@ -173,7 +174,7 @@ function parseSseFrame(frame) {
 // ===================== 合约详情接口 =====================
 export const contractApi = {
   getAllContracts: () => http.get('/contracts'),
-  getContractDetail: (id) => http.get(`/contracts/${id}`),
+  getContractDetail: (id, options) => http.get(`/contracts/${id}`, options),
   favoriteContract: (id, data = {}) => http.put(`/contracts/${id}/favorite`, data),
   unfavoriteContract: (id) => http.delete(`/contracts/${id}/favorite`),
   getFavorites: () => http.get(`/contracts/favorites`),

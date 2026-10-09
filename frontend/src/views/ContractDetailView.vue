@@ -23,7 +23,7 @@
                 <h1 class="page-title">{{ contract.contractName || '未命名合约' }}</h1>
                 <span class="contract-category" v-if="contract.category">{{ contract.category }}</span>
               </div>
-              <p class="detail-address">{{ contract.address }}</p>
+              <p class="detail-address">{{ isDemoContract ? '本地示例合约（未上链）' : contract.address }}</p>
               <div class="hero-summary">
                 <p v-for="item in descriptionSummary" :key="item">{{ item }}</p>
               </div>
@@ -51,7 +51,8 @@
               </button>
 
               <a
-                :href="`https://etherscan.io/address/${contract.address}`"
+                v-if="etherscanUrl"
+                :href="etherscanUrl"
                 target="_blank"
                 rel="noopener noreferrer"
                 class="action-btn action-btn--secondary"
@@ -59,8 +60,8 @@
                 在 Etherscan 查看
               </a>
 
-              <button class="action-btn action-btn--primary" @click="openInAiConversation">
-                AI 合约解读
+              <button class="action-btn action-btn--primary" :disabled="!features.agentEnabled" @click="openInAiConversation">
+                {{ features.agentEnabled ? 'AI 合约解读' : 'AI 解读（需启用）' }}
               </button>
             </div>
           </section>
@@ -264,6 +265,7 @@
 import { ref, computed, nextTick, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { contractApi } from '@/api'
+import { features } from '@/config/features'
 
 const DETAIL_TO_LAB_KEY = 'contractDetailToLabSource'
 const DETAIL_TO_AGENT_KEY = 'contractDetailToAgentContext'
@@ -272,6 +274,11 @@ const route = useRoute()
 const id = route.params.id
 
 const contract = ref(null)
+const isDemoContract = computed(() => String(contract.value?.address || '').startsWith('demo:'))
+const etherscanUrl = computed(() => {
+  const address = String(contract.value?.address || '').trim()
+  return /^0x[a-fA-F0-9]{40}$/.test(address) ? `https://etherscan.io/address/${address}` : null
+})
 const loading = ref(true)
 const error = ref('')
 const favoriteLoading = ref(false)
@@ -509,7 +516,7 @@ function buildLabFileName(name) {
 }
 
 function openInAiConversation() {
-  if (!contract.value) return
+  if (!features.agentEnabled || !contract.value) return
   try {
     sessionStorage.setItem(DETAIL_TO_AGENT_KEY, JSON.stringify({
       contractId: Number(id),

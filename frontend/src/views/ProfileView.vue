@@ -514,7 +514,7 @@
                       error: editErrors.email
                     }"
                     type="email"
-                    placeholder="example@email.com"
+                    placeholder="user@example.com"
                     :readonly="editingField !== 'email'"
                   />
                   <div class="profile-field-actions">

@@ -3,9 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "vite --host 0.0.0.0",
+    "dev": "vite --host 127.0.0.1",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "node --test tests/*.test.js"
   },
   "dependencies": {
     "axios": "^1.6.0",
@@ -18,5 +19,6 @@
     "@vitejs/plugin-vue": "^5.0.0",
     "solc": "^0.8.35",
     "vite": "^5.0.0"
-  }
+  },
+  "type": "module"
 }

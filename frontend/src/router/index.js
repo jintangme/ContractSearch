@@ -1,7 +1,8 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import { features } from '@/config/features'
 
 const routes = [
-  { path: '/', redirect: '/conversation' },
+  { path: '/', redirect: features.homeRoute },
   // 登录/注册页
   { path: '/login', component: () => import('@/views/LoginView.vue'), meta: { guest: true } },
   { path: '/register', component: () => import('@/views/RegisterView.vue'), meta: { guest: true } },
@@ -42,7 +43,7 @@ router.beforeEach((to) => {
       query: to.fullPath && to.fullPath !== '/' ? { redirect: to.fullPath } : undefined
     }
   }
-  if (isGuestRoute && token) return { path: '/conversation' }
+  if (isGuestRoute && token) return { path: features.homeRoute }
 })
 
 export default router

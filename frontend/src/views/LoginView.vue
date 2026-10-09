@@ -22,8 +22,8 @@
     <main class="auth-layout">
       <section class="auth-copy" aria-label="产品定位">
         <p class="brand-name">ContractSearch</p>
-        <h1>智能合约开发与安全验证平台</h1>
-        <p class="brand-subtitle">检索 · 实验 · 预审 · 形式化验证</p>
+        <h1>智能合约检索与分析工作台</h1>
+        <p class="brand-subtitle">检索 · 证据 · 编译 · 本地实验</p>
       </section>
 
       <section class="auth-panel">
