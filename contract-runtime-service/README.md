@@ -1,421 +1,149 @@
 # Contract Runtime Service
 
-独立的 Contract Lab runtime service，用于本地 Solidity 编译、本地 EVM 沙盒部署和合约函数调用。
+Local Solidity compilation, AST extraction, and EVM execution for Contract Lab
+and AgenticRAG. It uses Express, solc, ethers, and Ganache. Transactions execute
+on in-memory chains; no wallet extension, public RPC, or real funds are required.
 
-服务只使用内存型 Local Sandbox，不连接真实主网或测试网，不需要 MetaMask，不会保存用户源码到磁盘或数据库。部署交易只发生在本地内存链中，不产生真实链上交易。
+## Install and run
 
-## 依赖
-
-- `express`: HTTP API 服务
-- `cors`: 允许本地前端跨域调用
-- `solc`: Solidity standard JSON 编译
-- `ethers`: 合约部署与交易结果解析
-- `ganache`: 内存型本地 EVM 沙盒
-
-## 安装
+Use Node.js 22 and npm from the repository root:
 
 ```bash
 cd contract-runtime-service
 npm ci
+npm start
 ```
 
-## 启动
+The default address is `http://127.0.0.1:19090`. Override it with `RUNTIME_HOST`
+and `RUNTIME_PORT`; `HOST` and `PORT` are fallback variables. The process does
+not automatically load `.env` files. `npm run dev` uses the same entry point.
 
 ```bash
-npm run dev
+curl http://127.0.0.1:19090/health
 ```
 
-默认端口为 `19090`，也可以通过环境变量覆盖：
+Health returns `status`, `mode: "shared-local-evm"`, and `compilerVersion`.
+Send JSON with `Content-Type: application/json`; the HTTP body limit is 1 MB.
 
-```bash
-RUNTIME_PORT=19090 npm run dev
-```
+## API
 
-启动后会初始化 Local Sandbox，并使用 Ganache 默认测试账户作为 deployer。
+All POST routes below are relative to `/api/runtime`.
 
-`RUNTIME_HOST` 默认 `127.0.0.1`，`RUNTIME_PORT` 默认 `19090`；兼容旧的
-`HOST` / `PORT` 作为后备值。Node 服务读取进程环境变量，不会自动加载 `.env`。
-`GET /health` 返回服务状态、运行模式及 bundled compiler 版本。
+| Route | Request | Result |
+|---|---|---|
+| `/parse` | `sources`: map of file names to source strings | Declaration metadata, source spans, hashes, and diagnostics |
+| `/compile` | `sourceCode`, optional `fileName` and `compilerVersion` | `success`, compiler information, `contracts` with ABI/bytecode, errors and warnings |
+| `/deploy` | `contractName`, `abi`, `bytecode`, optional `constructorArgs` | Session ID, local contract address, and transaction receipt fields |
+| `/call` | `sessionId`, `functionName`, `args`, optional `value` | Read return values or a transaction receipt with decoded events |
+| `/validation-plan` | `plan`, optional `sourceCode` and `completeSource` | Canonical `planHash`, counts, and optional ABI preflight |
+| `/validate-candidate` | `sourceCode`, `plan`, `planHash` | Source/plan hashes, compile result, scenario checks, and execution status |
 
-Ganache 使用 Shanghai hardfork；Solidity 0.8.20 及以上编译器显式以 Shanghai
-为目标，避免更新编译器默认产生沙盒不支持的指令。老版本 solc 保留其默认目标。
-这是兼容本地运行的配置，不代表目标主网或其他链的部署配置。
+Compilation, parsing, deployment, and calls return HTTP 400 on unsuccessful
+results. Candidate checks can return HTTP 200 with `allChecksPassed: false`;
+inspect the JSON result rather than treating HTTP success as a passed test.
 
-## 编译接口
+### Compile, deploy, and call
 
-```text
-POST http://localhost:19090/api/runtime/compile
-```
-
-请求体：
+Compile a single self-contained Solidity file:
 
 ```json
 {
-  "sourceCode": "pragma solidity ^0.8.20; contract A {}",
-  "fileName": "Contract.sol"
+  "fileName": "Counter.sol",
+  "sourceCode": "pragma solidity ^0.8.20; contract Counter { uint public count; function increment() public { count += 1; } }"
 }
 ```
 
-`fileName` 可省略，默认使用 `Contract.sol`。
-
-编译服务会在编译前识别源码中的 `pragma solidity`。对于常见的 `0.4.x`、`0.5.x`、`0.6.x`、`0.7.x` 和 `0.8.x` 合约，会优先选择兼容的编译器版本。老版本编译器通过 `solc.loadRemoteVersion` 按需加载，因此首次编译老合约时可能需要 runtime service 所在环境可以访问 Solidity 官方编译器列表。
-
-### 编译 curl 示例
-
-```bash
-curl -X POST http://localhost:19090/api/runtime/compile \
-  -H "Content-Type: application/json" \
-  -d '{
-    "fileName": "Contract.sol",
-    "sourceCode": "// SPDX-License-Identifier: MIT\npragma solidity ^0.8.20;\n\ncontract SimpleStorage {\n    uint256 private value;\n\n    event ValueChanged(uint256 newValue);\n\n    function setValue(uint256 newValue) public {\n        value = newValue;\n        emit ValueChanged(newValue);\n    }\n\n    function getValue() public view returns (uint256) {\n        return value;\n    }\n}"
-  }'
-```
-
-### 编译成功返回结构
+Choose an entry from `contracts`, then send its `contractName`, `abi`, and
+`bytecode` to `/deploy`, with `constructorArgs: []` for this example. Use the
+returned session ID to call `/call`:
 
 ```json
-{
-  "success": true,
-  "contractName": "SimpleStorage",
-  "detectedPragma": {
-    "expression": "^0.8.20",
-    "versions": ["0.8.20"],
-    "preferredVersion": "0.8.20",
-    "majorMinor": "0.8"
-  },
-  "compilerVersion": "0.8.35",
-  "selectedCompilerVersion": "0.8.35",
-  "versionMismatch": false,
-  "contracts": [
-    {
-      "contractName": "SimpleStorage",
-      "abi": [],
-      "bytecode": "0x..."
-    }
-  ],
-  "errors": [],
-  "warnings": []
+{"sessionId":"<returned session ID>","functionName":"increment","args":[],"value":"0"}
+```
+
+Call `count` with empty arguments to read the new value. The `value` field is
+an **ether-denominated decimal string**, not wei. Integer outputs are serialized
+as decimal strings. Lab deployments share one in-memory chain and signer.
+Sessions expire after 30 minutes of inactivity; expiration removes a session
+reference, not its deployed chain state. Restarting the service clears both.
+
+### Validate a candidate
+
+Candidate checks use a declarative plan with named requirements and scenarios.
+Each scenario names one requirement, has its own fresh deployment, and contains
+ordered ABI calls. This example runs against the service started above:
+
+```javascript
+const base = 'http://127.0.0.1:19090/api/runtime';
+const sourceCode = 'pragma solidity ^0.8.20; contract Counter { uint public count; function increment() public { count += 1; } }';
+const plan = {
+  contractName: 'Counter', constructorArgs: [],
+  requirements: [{ id: 'increment', description: 'Increment updates state' }],
+  scenarios: [{
+    id: 'increment_once', requirementId: 'increment', steps: [
+      { kind: 'write', method: 'increment', args: [], from: 0, expect: 'success' },
+      { kind: 'read', method: 'count', args: [], from: 0, expect: 'equal', expected: '1' }
+    ]
+  }]
+};
+async function post(route, body) {
+  const response = await fetch(base + route, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  const result = await response.json();
+  if (!response.ok) throw new Error(JSON.stringify(result));
+  return result;
 }
+const { planHash } = await post('/validation-plan', { plan, sourceCode, completeSource: true });
+const result = await post('/validate-candidate', { sourceCode, plan, planHash });
+console.log(result.status, result.allChecksPassed, result.scenarios);
 ```
 
-如果单个文件中包含多个 contract，`contracts` 会返回所有合约。`contractName` 默认选择第一个包含 bytecode 的合约。
+Run the example in a JavaScript module (`.mjs`) with Node.js 22. The expected
+result is `CHECKS_PASSED` and `allChecksPassed: true`. Keep the returned `planHash`
+with the unchanged plan; candidate validation rejects a mismatched hash.
+`/validation-plan` validates the supplied object but does not store a server-side
+plan. AgenticRAG manages plan freezing in its own run workspace.
 
-### 编译错误返回结构
+Plans support read assertions, successful writes, expected reverts, exact ordered
+events, write return values, and bounded ETH balance changes. Write returns are
+checked by pre-transaction simulation; state and events come from the transaction.
+`from` selects account 0, 1, or 2; `$account0`–`$account2` are distinct nonzero
+accounts and `$contract` denotes the deployed contract. Use strings for large
+integers. Optional scenario `constructorArgs` overrides the plan default.
 
-```json
-{
-  "success": false,
-  "contractName": null,
-  "contracts": [],
-  "detectedPragma": {
-    "expression": "^0.4.15",
-    "versions": ["0.4.15"],
-    "preferredVersion": "0.4.15",
-    "majorMinor": "0.4"
-  },
-  "compilerVersion": "0.8.35",
-  "selectedCompilerVersion": "0.8.35",
-  "targetCompilerRelease": "v0.4.26+commit.4563c3fc",
-  "versionMismatch": true,
-  "errors": [
-    {
-      "severity": "error",
-      "message": "...",
-      "formattedMessage": "...",
-      "line": 5,
-      "column": 12
-    }
-  ],
-  "warnings": []
-}
-```
+Limits: 24,000 source characters; 24,000 characters in serialized plans;
+12 requirements and 12 scenarios; 10 steps per scenario and 64 steps total.
+Each candidate runs in a disposable child process with a 25-second timeout and
+256 MB Node heap limit. At most two workers run concurrently; excess requests
+return `BUSY`. Receipts identify the exact source and plan hashes. Passing checks
+establishes only the declared scenarios, not general correctness or security.
 
-只有 warning、没有 error 时，`success` 仍然为 `true`，warning 会放在 `warnings` 数组中。
+## Compiler and execution scope
 
-如果返回 `versionMismatch: true`，通常表示源码声明的 Solidity 版本与当前可用编译器不兼容，或匹配的远程编译器加载失败。这种情况不一定代表源码本身有语法问题。
+The bundled compiler is solc **0.8.35**. `/parse`, candidate validation, and ABI
+preflight use it without downloading compilers. Parsing accepts up to 100 source
+files with 1 MB combined source and returns declaration metadata, not a full AST.
 
-## AST 解析接口（Knowledge Ingestion）
+`/compile` supports a single file without external imports. It can download and
+cache selected solc versions in memory: 0.4.26, 0.5.17, 0.6.12, 0.7.6, and 0.8.20.
+This is a bounded version mapping, not an arbitrary pragma resolver; exact
+versions may be unavailable. Remote compilation needs network access. Ganache
+uses Shanghai; compilation with solc 0.8.20+ targets Shanghai for compatibility.
 
-```text
-POST http://localhost:19090/api/runtime/parse
-```
+There is no runtime user authentication or tenant isolation. Disposable candidate
+workers bound execution and contain process failures, but are not an OS security
+sandbox. Keep the API local; see [security guidance](../SECURITY.md) before exposing
+it. Lab state, sessions, and candidate execution results are not persisted.
 
-请求使用 Solidity Standard JSON 风格的多文件 source map：
-
-```json
-{
-  "sources": {
-    "Vault.sol": "pragma solidity ^0.8.20; contract Vault { function deposit() public {} }"
-  }
-}
-```
-
-该接口固定使用 lockfile 中的 bundled `solc 0.8.35`，不会按请求下载远程编译器。响应不返回完整 AST，而只返回 ingestion 所需的 function/modifier/constructor/receive/fallback declaration metadata，包括 AST ID、contract、visibility、mutability、参数类型、modifier、file/line/char/byte span、signature、原文和 hash。总源码上限 1MB、文件数上限 100。
-
-若源码 pragma 与固定编译器不兼容，接口返回结构化 diagnostics；Knowledge ingestion 会明确记录 AST fallback，不会把 lexical fallback 宣称为 AST 结果。
-
-## 部署接口
-
-```text
-POST http://localhost:19090/api/runtime/deploy
-```
-
-请求体：
-
-```json
-{
-  "contractName": "SimpleStorage",
-  "abi": [],
-  "bytecode": "0x...",
-  "constructorArgs": []
-}
-```
-
-`constructorArgs` 可省略，默认使用空数组。`bytecode` 如果缺少 `0x` 前缀，服务会自动补齐；如果不是十六进制字符串，会返回结构化错误。
-
-### 部署成功返回结构
-
-```json
-{
-  "success": true,
-  "sessionId": "runtime_xxx",
-  "contractName": "SimpleStorage",
-  "contractAddress": "0x...",
-  "deployer": "0x...",
-  "transactionHash": "0x...",
-  "gasUsed": "123456",
-  "blockNumber": 1,
-  "network": "Local Sandbox"
-}
-```
-
-### 部署失败返回结构
-
-```json
-{
-  "success": false,
-  "message": "部署失败：...",
-  "errorType": "DEPLOY_FAILED"
-}
-```
-
-常见 `errorType`：
-
-- `INVALID_ABI`
-- `INVALID_BYTECODE`
-- `INVALID_CONSTRUCTOR_ARGS`
-- `PROVIDER_INIT_FAILED`
-- `DEPLOY_FAILED`
-
-## compile 后部署
-
-推荐流程：
-
-1. 调用 `/api/runtime/compile` 编译 Solidity 源码。
-2. 从返回的 `contracts` 中选择目标合约。
-3. 将目标合约的 `contractName`、`abi`、`bytecode` 传给 `/api/runtime/deploy`。
-
-示例部署请求：
-
-```bash
-curl -X POST http://localhost:19090/api/runtime/deploy \
-  -H "Content-Type: application/json" \
-  -d '{
-    "contractName": "SimpleStorage",
-    "abi": [
-      {
-        "anonymous": false,
-        "inputs": [
-          {
-            "indexed": false,
-            "internalType": "uint256",
-            "name": "newValue",
-            "type": "uint256"
-          }
-        ],
-        "name": "ValueChanged",
-        "type": "event"
-      },
-      {
-        "inputs": [],
-        "name": "getValue",
-        "outputs": [
-          {
-            "internalType": "uint256",
-            "name": "",
-            "type": "uint256"
-          }
-        ],
-        "stateMutability": "view",
-        "type": "function"
-      },
-      {
-        "inputs": [
-          {
-            "internalType": "uint256",
-            "name": "newValue",
-            "type": "uint256"
-          }
-        ],
-        "name": "setValue",
-        "outputs": [],
-        "stateMutability": "nonpayable",
-        "type": "function"
-      }
-    ],
-    "bytecode": "0x...",
-    "constructorArgs": []
-  }'
-```
-
-上面的 `bytecode` 需要替换为编译接口实际返回的 bytecode。
-
-## Session
-
-部署成功后，服务会在内存 `Map` 中创建 runtime session，后续函数调用接口会通过 `sessionId` 找到合约实例。
-
-session 保存字段包括：
-
-- `sessionId`
-- `contractName`
-- `abi`
-- `bytecode`
-- `contractAddress`
-- `deployer`
-- `deployedAt`
-- `lastUsedAt`
-
-session 过期时间为 30 分钟。服务会定时清理过期 session。session 不会写入磁盘或数据库。
-
-## 函数调用接口
-
-```text
-POST http://localhost:19090/api/runtime/call
-```
-
-请求体：
-
-```json
-{
-  "sessionId": "runtime_xxx",
-  "functionName": "setValue",
-  "args": [123],
-  "value": "0"
-}
-```
-
-`sessionId` 来自部署接口返回值。所有函数调用都发生在 Local Sandbox 中，不是真实链上交易。
-
-### view / pure 函数返回结构
-
-```json
-{
-  "success": true,
-  "type": "call",
-  "functionName": "getValue",
-  "returnValue": "123",
-  "decodedReturnValue": ["123"]
-}
-```
-
-### nonpayable / payable 函数返回结构
-
-```json
-{
-  "success": true,
-  "type": "transaction",
-  "functionName": "setValue",
-  "transactionHash": "0x...",
-  "gasUsed": "45678",
-  "blockNumber": 3,
-  "events": [
-    {
-      "eventName": "ValueChanged",
-      "args": {
-        "newValue": "123"
-      }
-    }
-  ]
-}
-```
-
-### 调用失败返回结构
-
-```json
-{
-  "success": false,
-  "message": "调用失败：...",
-  "errorType": "CALL_FAILED"
-}
-```
-
-常见 `errorType`：
-
-- `SESSION_NOT_FOUND`
-- `FUNCTION_NOT_FOUND`
-- `FUNCTION_OVERLOADED`
-- `INVALID_ARGS`
-- `INVALID_VALUE`
-- `CALL_FAILED`
-
-### SimpleStorage 测试流程
-
-1. 调用 `/api/runtime/compile` 编译 SimpleStorage。
-2. 使用编译结果里的 `abi` 和 `bytecode` 调用 `/api/runtime/deploy`。
-3. 使用部署返回的 `sessionId` 调用写入函数：
-
-```bash
-curl -X POST http://localhost:19090/api/runtime/call \
-  -H "Content-Type: application/json" \
-  -d '{
-    "sessionId": "runtime_xxx",
-    "functionName": "setValue",
-    "args": ["123"],
-    "value": "0"
-  }'
-```
-
-4. 调用读取函数：
-
-```bash
-curl -X POST http://localhost:19090/api/runtime/call \
-  -H "Content-Type: application/json" \
-  -d '{
-    "sessionId": "runtime_xxx",
-    "functionName": "getValue",
-    "args": [],
-    "value": "0"
-  }'
-```
-
-`setValue(123)` 会返回交易结果和 `ValueChanged` 事件；随后 `getValue()` 应返回 `123`。
-
-## 当前限制
-
-- 编译只支持单文件 Solidity 源码。
-- 暂不处理外部 `import`。
-- 请求体和源码大小限制为 1MB。
-- 目前提供编译、部署、函数调用接口。
-- 暂不提供多文件 import 支持。
-- 部署和调用只发生在 Local Sandbox，不是真实链上交易。
-
-
-## 运行边界与验证
-
-这个服务使用共享内存链和共享 signer，没有租户隔离、用户鉴权或操作系统级
-编译沙箱。Session 过期只删除引用，不回滚链状态；重启服务会清空所有链数据。
-把 Node 服务拆为独立进程不等于隔离不可信源码。不要将整个 runtime API 匿名
-发布到公网；公开演示应禁用此入口，或另行设计鉴权、资源限制与执行隔离。
+## Tests
 
 ```bash
 npm test
 ```
 
-测试使用 bundled solc 和本地内存链，不下载远程编译器或连接真实区块链，覆盖
-AST metadata、错误源码 diagnostics，以及字符串合约的编译、部署、写入、读取
-和 session 过期。部分 Node/平台组合下 Ganache 原生 µWS 扩展不可用，会回退
-到 JavaScript 实现；可用性与性能需按实际平台验证。
-
-服务首次编译旧版本时可能下载远程 compiler。当前映射只包含 0.4.26、0.5.17、
-0.6.12、0.7.6、0.8.20；它不是任意版本解析器，精确 pragma 未必有对应版本。
-远程 compiler 的可达性和版本许可需按实际使用版本检查。
+Tests run offline with the bundled compiler and local EVM. They cover AST spans,
+compile/deploy/call, session expiration, plan validation, ABI values, candidate
+assertions, constructor overrides, and worker failure/concurrency handling.
+Some platforms lack Ganache's native µWS binary and fall back to JavaScript.

@@ -93,26 +93,36 @@ class MiniAgentLoopEngineTest {
     }
 
     @Test
-    void routesGeneralKnowledgeQuestionToOneKnowledgeRetrievalThenAnswer() {
+    void agentCanChooseOneKnowledgeRetrievalThenStopWithToolsStillAvailable() {
         List<AgentDecisionRequest> requests = new ArrayList<>();
         StructuredActionProvider provider = request -> {
             requests.add(request);
-            if (!request.tools().isEmpty()) {
-                return AgentDecision.toolCall("retrieve_knowledge.v1", "{\"query\":\"智能合约定义\"}", "retrieve definition");
-            }
+            if (request.evidence().isEmpty()) return AgentDecision.toolCall("retrieve_knowledge.v1", "{\"query\":\"智能合约定义\"}", "retrieve definition");
+            assertThat(request.tools()).isNotEmpty();
             return AgentDecision.finalAnswer("智能合约是部署在区块链上的可执行程序。",
-                    request.evidence().stream().map(item -> item.id()).toList(), "answer definition");
+                    request.evidence().stream().map(item -> item.id()).toList(), "Enough evidence; answer now");
         };
-
-        MiniLoopResult result = engine(provider, new AgentProperties.MiniLoop(true, 6, 5, 2))
+        var result = engine(provider, new AgentProperties.MiniLoop(true, 6, 5, 2))
                 .execute(UUID.randomUUID(), 7, "什么是合约");
-
         assertThat(result.state()).isEqualTo(AgentRunState.COMPLETE);
-        assertThat(result.toolCalls()).isEqualTo(1);
-        assertThat(result.retrievalRounds()).isEqualTo(1);
-        assertThat(requests.get(0).tools()).extracting(tool -> tool.name())
-                .containsExactly("retrieve_knowledge.v1");
-        assertThat(requests.get(1).tools()).isEmpty();
+        assertThat(result.toolCalls()).isOne();
+        assertThat(requests).hasSize(2);
+    }
+
+    @Test
+    void knowledgeAgentMayResolveAConcreteGapWithAnotherRetrieval() {
+        StructuredActionProvider provider = request -> {
+            if (request.step() < 3) {
+                assertThat(request.tools()).extracting(ToolDefinition::name).contains("retrieve_knowledge.v1");
+                return AgentDecision.toolCall("retrieve_knowledge.v1", "{\"query\":\"definition " + request.step() + "\"}", "Resolve remaining definition gap");
+            }
+            return AgentDecision.finalAnswer("Definition supported by two observations.",
+                    request.evidence().stream().map(item -> item.id()).toList(), "Resolved");
+        };
+        var result = engine(provider, new AgentProperties.MiniLoop(true, 6, 5, 2)).execute(UUID.randomUUID(), 7, "什么是合约");
+        assertThat(result.state()).isEqualTo(AgentRunState.COMPLETE);
+        assertThat(result.retrievalRounds()).isEqualTo(2);
+        assertThat(result.steps()).isEqualTo(3);
     }
 
     @Test
@@ -179,6 +189,59 @@ class MiniAgentLoopEngineTest {
         assertThat(result.events()).extracting(event -> event.type()).containsExactlyElementsOf(published);
     }
 
+    @Test
+    void loadsSelectedSourceBeforePlanningAndChargesTheSameToolBudget() {
+        List<AgentDecisionRequest> requests = new ArrayList<>();
+        StructuredActionProvider provider = request -> {
+            requests.add(request);
+            return AgentDecision.finalAnswer("Answer grounded in the selected source.",
+                    request.evidence().stream().map(item -> item.id()).toList(), "final");
+        };
+        MiniLoopResult result = engine(provider, new AgentProperties.MiniLoop(true, 6, 1, 2))
+                .execute(UUID.randomUUID(), 7, "Read selected source", Map.of("selectedContractId", 42L));
+
+        assertThat(result.state()).isEqualTo(AgentRunState.COMPLETE);
+        assertThat(result.toolCalls()).isOne();
+        assertThat(result.steps()).isOne();
+        assertThat(result.retrievalRounds()).isZero();
+        assertThat(requests).hasSize(1);
+        assertThat(requests.get(0).remainingToolCalls()).isZero();
+        assertThat(requests.get(0).tools()).isEmpty();
+        assertThat(requests.get(0).observations().get(0)).contains("get_contract.v1", "UNTRUSTED_TOOL_OUTPUT");
+        assertThat(result.events()).extracting(event -> event.type()).containsSubsequence(
+                "context.hydrating", "tool.requested", "tool.completed", "model.action");
+        assertThat(result.events().stream().filter(e -> e.type().equals("tool.requested")).findFirst().orElseThrow()
+                .data().toString()).contains("42");
+    }
+
+    @Test
+    void reservesTheLastDecisionForAnAnswerBeforeStepExhaustion() {
+        List<AgentDecisionRequest> requests = new ArrayList<>();
+        StructuredActionProvider provider = request -> {
+            requests.add(request);
+            if (!request.tools().isEmpty()) {
+                return AgentDecision.toolCall("get_contract.v1", "{\"contractId\":1}", "get");
+            }
+            return AgentDecision.finalAnswer("Available evidence only.",
+                    request.evidence().stream().map(item -> item.id()).toList(), "final");
+        };
+        MiniLoopResult result = engine(provider, new AgentProperties.MiniLoop(true, 2, 5, 2))
+                .execute(UUID.randomUUID(), 7, "Read source code");
+        assertThat(result.state()).isEqualTo(AgentRunState.COMPLETE);
+        assertThat(result.toolCalls()).isOne();
+        assertThat(requests.get(1).remainingToolCalls()).isEqualTo(4);
+        assertThat(requests.get(1).tools()).isEmpty();
+    }
+
+    @Test
+    void invalidSelectedReferenceDoesNotReadAnArbitraryContract() {
+        StructuredActionProvider provider = request -> { throw new AssertionError("Must not reach provider"); };
+        MiniLoopResult result = engine(provider, new AgentProperties.MiniLoop(true, 6, 5, 2))
+                .execute(UUID.randomUUID(), 7, "Read source", Map.of("selectedContractId", 1.5));
+        assertThat(result.errorCode()).isEqualTo(AgentErrorCode.INVALID_TOOL_ARGUMENTS);
+        assertThat(result.toolCalls()).isZero();
+    }
+
     private MiniAgentLoopEngine engine(StructuredActionProvider provider, AgentProperties.MiniLoop budget) {
         ToolRegistry registry = new ToolRegistry(List.of(
                 new StubTool("search_contracts.v1", SideEffect.READ),
@@ -199,6 +262,25 @@ class MiniAgentLoopEngineTest {
         return new MiniAgentLoopEngine(new AgentStateMachine(), registry,
                 new ToolInvocationValidator(objectMapper), new MiniLoopToolPolicy(), provider,
                 new UntrustedContentBoundary(), objectMapper, properties);
+    }
+
+    @Test
+    void formatRepairsConsumeTheSameModelBudgetAndReserveATerminalCall() {
+        List<AgentDecisionRequest> requests = new ArrayList<>();
+        StructuredActionProvider provider = request -> {
+            requests.add(request);
+            if (request.step() == 1) return AgentDecision.toolCall("get_contract.v1", "{\"contractId\":1}", "read")
+                    .withProviderMetadata(Map.of("providerCalls", 2));
+            if (request.step() == 2) return AgentDecision.toolCall("compile_contract.v1", "{\"contractId\":1}", "compile")
+                    .withProviderMetadata(Map.of("providerCalls", 2));
+            if (request.step() == 3) return AgentDecision.toolCall("precheck_contract.v1", "{\"contractId\":1}", "precheck");
+            assertThat(request.tools()).isEmpty();
+            return AgentDecision.finalAnswer("Only observed results.", request.evidence().stream().map(e -> e.id()).toList(), "finish");
+        };
+        var result = engine(provider, new AgentProperties.MiniLoop(true, 6, 5, 2)).execute(UUID.randomUUID(), 7, "Review source code");
+        assertThat(result.state()).isEqualTo(AgentRunState.COMPLETE);
+        assertThat(requests).extracting(AgentDecisionRequest::remainingModelCalls).containsExactly(6, 4, 2, 1);
+        assertThat(result.events().get(result.events().size() - 1).data().toString()).contains("modelCalls=6");
     }
 
     private static final class StubTool implements AgentTool {

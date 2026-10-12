@@ -1,0 +1,24 @@
+{
+  "contractName": "Counter",
+  "constructorArgs": ["$account0"],
+  "requirements": [
+    {"id": "initial", "description": "初始值为零，保留 owner"},
+    {"id": "increment", "description": "Owner can increment repeatedly"},
+    {"id": "permission", "description": "Other accounts cannot increment"}
+  ],
+  "scenarios": [
+    {"id": "initial", "requirementId": "initial", "steps": [
+      {"kind":"read","method":"count","args":[],"from":0,"expect":"equal","expected":"0"},
+      {"kind":"read","method":"owner","args":[],"from":0,"expect":"equal","expected":"$account0"}
+    ]},
+    {"id": "repeated", "requirementId": "increment", "steps": [
+      {"kind":"write","method":"increment","args":[],"from":0,"expect":"success"},
+      {"kind":"write","method":"increment","args":[],"from":0,"expect":"success"},
+      {"kind":"read","method":"count","args":[],"from":0,"expect":"equal","expected":"2"}
+    ]},
+    {"id": "denied", "requirementId": "permission", "steps": [
+      {"kind":"write","method":"increment","args":[],"from":1,"expect":"revert"},
+      {"kind":"read","method":"count","args":[],"from":0,"expect":"equal","expected":"0"}
+    ]}
+  ]
+}

@@ -77,6 +77,29 @@ class PublicContentTest(CheckoutTest):
         self.assertIn("unsafe.py:1: provider-token", output.getvalue())
         self.assertIn("unsafe.py:2: personal-path", output.getvalue())
 
+    def test_internal_material_cannot_bypass_checks_when_force_added(self):
+        names = (
+            "experiments/run.json", "docs/archive/report.md",
+            "docs/agentic-rag/research/plan.md", "docs/agentic-rag/eval/result.json",
+            "docs/agentic-rag/adr/decision.md",
+            "backend/src/test/LivePilotBridgeTest.java",
+        )
+        self.write(".gitignore", "experiments/\ndocs/\nbackend/\n")
+        for name in names:
+            self.write(name, "DO_NOT_READ")
+        self.assertEqual(privacy.scan(self.root), [])
+        subprocess.run(["git", "-C", str(self.root), "add", "-f", "--", *names], check=True)
+        original = Path.read_bytes
+
+        def guarded(path):
+            if path.relative_to(self.root).as_posix() in names:
+                raise AssertionError("Internal material must be rejected before reading")
+            return original(path)
+
+        with patch.object(Path, "read_bytes", guarded):
+            self.assertEqual(set(privacy.scan(self.root)),
+                             {(name, 1, "forbidden-public-file") for name in names})
+
     def test_notice_email_exception_does_not_exempt_secrets(self):
         email = "author" + "@" + "upstream.org"
         self.write("LICENSE", email + '\nAPI_KEY="' + "sk-" + "b" * 32 + '"\n')

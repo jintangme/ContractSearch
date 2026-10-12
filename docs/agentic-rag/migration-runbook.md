@@ -1,42 +1,65 @@
-# Agent and Knowledge Foundations Migration Runbook
+# Agent database migrations
 
-## Safety defaults
+Agent migrations add run, evidence, knowledge and ingestion tables. They are
+separate from the business [bootstrap schema](../../database/bootstrap/001-schema.sql).
+The migration runner uses Flyway with `baselineOnMigrate=true` and baseline
+version `0`; it applies every migration in the service's `db/migration` directory.
 
-- `AGENT_MIGRATIONS_ENABLED=false` by default.
-- `AGENT_ENABLED=false` and `AGENT_ROUTE_ENABLED=false` by default.
-- V1–V3 are additive and must not alter `smart_contract` or its embedding columns.
-- V2/V3 only create Knowledge Layer storage and ingestion ledgers; they do not activate a corpus or retrieval index.
-- Never test a new migration first against the running `mydatabase` database.
+## Local demo
 
-## Required pre-production sequence
+The [Compose Agent workflow](../development/agent-mode.md) enables migrations
+against its dedicated demo database. Repeated startup checks for pending
+migrations without reapplying completed files. The root `.env` value of
+`AGENT_MIGRATIONS_ENABLED` does not override that Compose setting.
 
-1. Create an empty disposable PostgreSQL database and run all migrations twice. The second run must report no pending migration.
-2. Create a disposable database from a schema-only dump of the running database.
-3. Configure Flyway with `baselineOnMigrate=true` and `baselineVersion=0`, then run all migrations.
-4. Compare `ai_chat_*` and `user_contract_record` columns/indexes with the live schema.
-5. Verify V2 ownership/trust constraints, then run old Search, Chat, Contract Lab and authentication smoke tests against the disposable clone.
-6. Back up the target database and record the backup identifier.
-7. Enable migrations for one `cloud-agent-service` instance, wait for health, then disable migration execution on additional replicas.
+## Existing database
 
-## Activation variables
+Before changing an existing installation:
 
-```text
+1. Test the migrations on a disposable empty database and a schema-only copy of
+   the target database. Confirm that a second migration run has no pending work.
+2. Check the conversation, draft and knowledge tables, then run application API
+   and tool-adapter checks against the disposable database.
+3. Back up the target database. Enable migrations for one configured Agent
+   instance and wait for it to become healthy.
+4. Disable migration execution on other replicas and enable the required Agent
+   features independently.
+
+Host-run migration configuration:
+
+```dotenv
 AGENT_MIGRATIONS_ENABLED=true
 AGENT_DB_URL=jdbc:postgresql://127.0.0.1:5432/<validated-target>
 AGENT_DB_USERNAME=<migration-role>
 AGENT_DB_PASSWORD=<secret>
 ```
 
-The migration role should own only the relevant schema and should not be the application superuser.
+The migration role needs the required schema privileges. Applying migrations
+alone does not populate a knowledge corpus or enable public Agent routes.
+Follow the [knowledge ingestion guide](knowledge-ingestion-runbook.md) to import
+sources. If conversation tables have already been provisioned, the business
+service can use `LEGACY_CONVERSATION_DDL_ENABLED=false` to skip its conversation
+startup DDL.
 
-## Compatibility window
+## Integration check
 
-Keep `LEGACY_CONVERSATION_DDL_ENABLED=true` for one release. After schema equivalence and rolling-deployment tests pass, set it to `false`. Delete the legacy `@PostConstruct` DDL only in a later contract migration.
+The migration test creates and drops a dedicated test schema. Run it only on a
+disposable database, from the repository root:
 
-## Phase 2 activation boundary
+```bash
+AGENT_MIGRATION_TEST_URL='jdbc:postgresql://127.0.0.1:<port>/<test-database>' \
+AGENT_MIGRATION_TEST_USERNAME='<test-user>' \
+AGENT_MIGRATION_TEST_PASSWORD='<test-password>' \
+mvn -f backend/pom.xml -pl cloud-agent-service -Dtest=PostgresMigrationIntegrationTest test
+```
 
-Applying V2/V3 creates empty tables only. Population requires the default-off ingestion writer, a new immutable corpus version and the Knowledge runbook. Do not add an `ACTIVE` corpus or route production Search to Knowledge tables during Phase 2.
+`AGENT_MIGRATION_TEST_MODE=live-clone` additionally checks compatibility with
+conversation and draft tables copied from that database's `public` schema.
+No production records are needed.
 
 ## Rollback
 
-Disable `AGENT_ROUTE_ENABLED` and `AGENT_ENABLED`, then roll back the service binary. V1/V2 tables are retained because they are additive and unused while the feature is off. Do not automatically drop Agent or Knowledge tables; remove a failed corpus version only through the later ingestion rollback command after its exact ID has been reviewed.
+Disable `AGENT_ROUTE_ENABLED` and `AGENT_ENABLED` before rolling back the
+service binary. Additive Agent and knowledge tables can remain in place while
+the feature is disabled. Data removal or restoration requires a separate,
+reviewed database operation; disabling the feature does not drop tables.

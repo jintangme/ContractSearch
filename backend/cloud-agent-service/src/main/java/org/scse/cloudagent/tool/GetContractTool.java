@@ -43,9 +43,12 @@ public class GetContractTool implements AgentTool {
         String excerpt = truncate((description.isBlank() ? "" : description + "\n") + source, 6000);
         Map<String, Object> metadata = new LinkedHashMap<>();
         metadata.put("contractId", contractId);
+        String sourceHash = context.workspace().observeSource(contractId, source, source.length() <= MAX_MODEL_SOURCE_CHARS).sourceHash();
+        metadata.put("sourceHash", sourceHash);
         metadata.put("contentBoundary", "UNTRUSTED");
         if (contract.containsKey("compilerVersion")) metadata.put("compilerVersion", contract.get("compilerVersion"));
         Map<String, Object> boundedOutput = new LinkedHashMap<>(contract);
+        boundedOutput.put("sourceHash", sourceHash);
         if (source.length() > MAX_MODEL_SOURCE_CHARS) {
             boundedOutput.put("sourceCode", source.substring(0, MAX_MODEL_SOURCE_CHARS));
             boundedOutput.put("sourceTruncated", true);

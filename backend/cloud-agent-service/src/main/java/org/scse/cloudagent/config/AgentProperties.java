@@ -68,8 +68,8 @@ public record AgentProperties(
     public record MiniLoop(boolean enabled, int maxSteps, int maxToolCalls, int maxRetrievalRounds) {
         public MiniLoop {
             maxSteps = maxSteps <= 0 ? 6 : Math.min(maxSteps, 6);
-            maxToolCalls = maxToolCalls <= 0 ? 5 : Math.min(maxToolCalls, 5);
-            maxRetrievalRounds = maxRetrievalRounds <= 0 ? 2 : Math.min(maxRetrievalRounds, 2);
+            maxToolCalls = maxToolCalls <= 0 ? 5 : Math.min(maxToolCalls, 8);
+            maxRetrievalRounds = maxRetrievalRounds <= 0 ? 2 : Math.min(maxRetrievalRounds, 3);
         }
     }
 

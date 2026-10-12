@@ -38,6 +38,12 @@ def git_candidates(root: Path) -> list[Path]:
 def forbidden_file(path: Path) -> bool:
     name = path.name.lower()
     parts = {part.lower() for part in path.parts}
+    value = path.as_posix().lower()
+    if value.startswith(("experiments/", "docs/archive/", "docs/agentic-rag/research/",
+                         "docs/agentic-rag/eval/", "docs/agentic-rag/adr/")):
+        return True
+    if name == "livepilotbridgetest.java":
+        return True
     if (name == ".env" or name.startswith(".env.")) and name != ".env.example":
         return True
     if parts.intersection({"backups", "dumps", "uploads", "logs", "nacos-data", "node_modules", ".venv", "venv", "__pycache__", "target"}):

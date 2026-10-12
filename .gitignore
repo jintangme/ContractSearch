@@ -69,3 +69,21 @@ test-results/
 **/.env.local
 **/*.har
 **/storage-state*.json
+
+# Internal experiments and development archives
+/experiments/
+/docs/archive/
+/docs/agentic-rag/research/
+/docs/agentic-rag/eval/
+/docs/agentic-rag/adr/
+/docs/agentic-rag/api-inventory.md
+/docs/agentic-rag/service-map.md
+/docs/agentic-rag/schemas/eval-case.schema.json
+/docs/agentic-rag/schemas/agent-model-profile.json
+/docs/status.md
+/docs/version-history.md
+/scripts/agentic-rag/run-eval.mjs
+/scripts/agentic-rag/run-phase0-search-baseline.mjs
+/scripts/agentic-rag/probe-glm-contract.mjs
+/scripts/agentic-rag/probe-runtime-contracts.mjs
+/backend/cloud-agent-service/src/test/java/org/scse/cloudagent/service/LivePilotBridgeTest.java

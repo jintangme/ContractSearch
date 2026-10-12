@@ -50,13 +50,15 @@ public class CompileContractTool implements AgentTool {
         Map<String, Object> contract = catalogClient.getContract(contractId, context.userId());
         String name = String.valueOf(contract.getOrDefault("contractName", "Contract"));
         String source = String.valueOf(contract.getOrDefault("sourceCode", ""));
+        String sourceHash = context.workspace().observeSource(contractId, source, false).sourceHash();
         Map<String, Object> compile = runtimeClient.compile(source, safeFileName(name), requestedVersion);
         Map<String, Object> output = new LinkedHashMap<>(compile);
         output.put("contractId", contractId);
+        output.put("sourceHash", sourceHash);
         String summary = compileSummary(compile);
         EvidenceDraft evidence = new EvidenceDraft("SOLIDITY_COMPILE", "compile:contract:" + contractId,
                 "Compile result for " + name, summary, TrustLevel.TOOL_GENERATED,
-                Map.of("contractId", contractId, "sandboxed", true, "contentBoundary", "UNTRUSTED"));
+                Map.of("contractId", contractId, "sourceHash", sourceHash, "sandboxed", true, "contentBoundary", "UNTRUSTED"));
         return new ToolExecutionResult(output, List.of(evidence));
     }
 

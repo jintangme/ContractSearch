@@ -8,7 +8,7 @@ The default Maven reactor builds three Java 17 services:
 | `cloud-service` | Contracts, search, identity, favorites, conversations, precheck | `127.0.0.1:18081` |
 | `cloud-agent-service` | Bounded agent loop, tool adapters, knowledge ingestion, evidence and audit | `127.0.0.1:18082` |
 
-`cloud-auth-service` and `cloud-user-service` are retained historical scaffolds. They contain no extracted business APIs and are excluded from the normal build. Use `-Plegacy-service-stubs` only when inspecting that scaffolding. Identity and user features currently live in `cloud-service`.
+`cloud-auth-service` and `cloud-user-service` are optional scaffolds excluded from the normal build. Identity and user features live in `cloud-service`.
 
 The main business entry point is `org.scse.cloudservice.CloudServiceApplication`; it scans the `org.scse.smartcontractsearchengine` business packages and MyBatis mappers. There is one application entry point per active module.
 
@@ -38,7 +38,7 @@ python3 scripts/with-env.py python3 scripts/seed-demo-knowledge.py
 
 The script checks the original source hashes before writing, follows ingestion checkpoints, and verifies that all knowledge chunks have search rows without orphans or duplicate identities. It refuses a catalog that differs from the three original examples, permits only a loopback Agent URL, and makes no model calls. Repeated runs preserve the three sources and six AST chunks. Use a new corpus version when intentionally changing the example source; knowledge corpus versions are immutable.
 
-Legacy business services still run small additive startup DDL statements; the bootstrap already contains their columns. `LEGACY_CONVERSATION_DDL_ENABLED=false` disables conversation startup DDL after provisioning. A future migration should move all remaining startup DDL to versioned migrations.
+Some business services run additive startup DDL; the bootstrap already contains those columns. `LEGACY_CONVERSATION_DDL_ENABLED=false` disables conversation startup DDL after provisioning.
 
 ## Network and configuration boundaries
 
@@ -80,4 +80,4 @@ POSTGRESQL_DB_USERNAME='<test-user>' POSTGRESQL_DB_PASSWORD='<test-password>' \
 mvn -pl cloud-service -Dtest=CloudServiceApplicationTests test
 ```
 
-Do not point integration tests at a working or production database. Agent migration and live-tool integration tests are opt-in via `AGENT_MIGRATION_TEST_URL` and `RUN_AGENT_TOOL_INTEGRATION`; see the agent README for their requirements. Mock evaluation fixtures validate harness behavior, not model quality.
+Do not point integration tests at a working or production database. Agent migration and live-tool integration tests are opt-in via `AGENT_MIGRATION_TEST_URL` and `RUN_AGENT_TOOL_INTEGRATION`; see the agent README for their requirements.

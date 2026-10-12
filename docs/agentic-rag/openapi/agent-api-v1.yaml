@@ -2,7 +2,7 @@ openapi: 3.1.0
 info:
   title: ContractSearch Agent API
   version: 1.0.0
-  description: Phase 1 contract. All endpoints are disabled unless agent.enabled=true.
+  description: Authenticated Agent sessions, runs, tool events and source evidence. All endpoints are disabled unless agent.enabled=true.
 servers:
   - url: /api/agent/v1
 security:
@@ -139,7 +139,7 @@ paths:
         - $ref: '#/components/parameters/RunId'
       responses:
         '200':
-          description: Reviewable proposals; Phase 1 exposes read-only mock proposals
+          description: Reviewable proposals associated with the owned run
           content:
             application/json:
               schema:

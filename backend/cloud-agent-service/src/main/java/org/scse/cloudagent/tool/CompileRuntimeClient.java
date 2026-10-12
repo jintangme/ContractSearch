@@ -41,12 +41,17 @@ public class CompileRuntimeClient {
     }
 
     public Map<String, Object> compile(String sourceCode, String fileName, String compilerVersion) {
+        return compile(sourceCode, fileName, compilerVersion, properties.dependencies().compileTimeoutMs());
+    }
+
+    public Map<String, Object> compile(String sourceCode, String fileName, String compilerVersion, long remainingMillis) {
         if (sourceCode == null || sourceCode.isBlank()) {
             throw new InvalidToolArgumentsException("The selected contract has no Solidity source code");
         }
         if (sourceCode.length() > MAX_SOURCE_CHARS) {
             throw new InvalidToolArgumentsException("Contract source exceeds the compile tool size limit");
         }
+        if (remainingMillis <= 0) throw new AgentToolException(AgentErrorCode.TOOL_TIMEOUT, "No task time remains for compilation");
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("sourceCode", sourceCode);
         payload.put("fileName", fileName);
@@ -54,7 +59,7 @@ public class CompileRuntimeClient {
         try {
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(properties.dependencies().runtimeBaseUrl() + "/api/runtime/compile"))
-                    .timeout(Duration.ofMillis(properties.dependencies().compileTimeoutMs()))
+                    .timeout(Duration.ofMillis(Math.min(properties.dependencies().compileTimeoutMs(), remainingMillis)))
                     .header("Accept", "application/json")
                     .header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(payload), StandardCharsets.UTF_8))

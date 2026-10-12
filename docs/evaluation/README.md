@@ -1,20 +1,13 @@
-# Validation and evaluation
+# Validation
 
-Local validation date: **2026-10-09**; first published CI validation:
-**2026-10-10**. These are engineering checks, not a comparative model-quality study.
+The repository includes automated checks for application behavior, tool
+boundaries and the local demonstration. These checks do not require paid model
+calls. Current CI results are available in [GitHub Actions](https://github.com/jintangme/ContractSearch/actions).
 
-## Published CI result
+## Local checks
 
-[Build and verify run 37965266282](https://github.com/jintangme/ContractSearch/actions/runs/37965266282)
-passed all seven jobs for commit `51393b565b7364504445e0f46b68874ba5cb2351`:
-source/publication checks, Java, frontend, contract runtime, Lean wrapper,
-Discovery, and the complete Docker demonstration. The run installed dependencies
-on fresh GitHub Linux runners and exercised the real basic API smoke workflow.
-It did not invoke paid model services or an installed Lean toolchain.
-
-Subsequent commit results are available from the README's live workflow badge.
-
-## Repeatable commands
+Run from the repository root after installing the dependencies described in the
+[quickstart](../development/quickstart.md):
 
 ```bash
 mvn -f backend/pom.xml test
@@ -25,64 +18,31 @@ npm --prefix lean-runtime-service test
 python3 -m unittest discover -s scripts/tests -v
 python3 scripts/check-public-content.py
 python3 scripts/check-doc-links.py
-node scripts/agentic-rag/run-eval.mjs --check
 ```
 
-The database and live-tool integration tests are opt-in and must target a
-disposable database. See [backend instructions](../development/backend.md).
-
-## Observed results
-
-| Check | Scope and observation |
+| Area | What is checked |
 |---|---|
-| Java | Active reactor builds/packages; gateway, business and Agent tests pass; live dependencies are explicitly gated |
-| Database bootstrap | Fresh PostgreSQL 18.3 / pg_search 0.23.0 / pgvector 0.8.1; repeated schema/seed leaves three samples and one group |
-| Search | Real English source BM25 and Chinese description BM25 queries return the expected samples |
-| Agent migrations | V1–V6 applied in fresh and live-clone test schemas; repeated migrate has no changes |
-| Knowledge bootstrap | Two real imports both retain 3 sources / 3 documents / 6 indexed chunks; orphan, missing-index and duplicate checks return zero |
-| Agent tool integration | Real contract search → read-only detail → runtime compilation passes without a model call |
-| Frontend | 13 behavior tests pass; production build succeeds; Monaco emits a size warning |
-| Contract runtime | Three tests pass, including real compilation, deployment, state write/read and session expiry |
-| Lean wrapper | Four tests pass with an injected executor; no real Lean toolchain is claimed |
-| Publication/demo scripts | 29 behavior tests pass, including checked ZIP export; current public-file privacy scan and local documentation links pass |
-| Discovery callback | Three tests pass locally and in CI with a fresh Python 3.11 dependency installation |
-| Basic API workflow | Registration, login, BM25, detail, real compilation and blocked import verified against the local demo |
-| Docker demonstration | All four application images built; Compose database/runtime healthy; the same API smoke passes through Nginx on loopback 8080 |
-| Browser workflow | Actual UI import → compile → local deployment → increment → count returns 1; screenshots use synthetic data |
+| Java services | Authentication, routing, application APIs, Agent actions, budgets and evidence handling |
+| Frontend | User-facing component behavior and production compilation |
+| Solidity runtime | Compilation, local execution, candidate scenarios and session handling |
+| Lean wrapper | Request validation and result handling with a controlled executor |
+| Repository scripts | Demo setup, public-file checks and documentation links |
 
-Any additional verification performed for a release should record the commit,
-dependency versions, commands and whether external services were involved.
-Do not publish raw logs or account/token payloads.
+Database migrations, live service adapters and the complete Docker workflow
+need running dependencies. Follow the [backend guide](../development/backend.md)
+and [Agent setup](../development/agent-mode.md), using a disposable database.
+The Lean wrapper tests do not substitute for running an installed Lean toolchain.
 
-The Docker build was run from a temporary ASCII source directory because the
-local BuildKit version rejected a non-ASCII checkout path. An isolated anonymous
-Docker configuration avoided a stalled local credential helper; no global Docker
-configuration was changed. Linux installation also exposed and verified the fix
-for Ganache's optional macOS-only `fsevents` lock entry.
+## Interpreting runtime feedback
 
-## Actual interface samples
+Agentic RAG records exact-source compilation separately from behavior checks.
+Candidate checks execute an Agent-authored, frozen plan and report actual
+scenario outcomes. Passing those checks supports only the declared scenarios;
+it is not an independent benchmark score or a security audit. Optional model
+review is advisory and does not create an execution receipt.
 
-![BM25 search on synthetic examples](../assets/search-demo.png)
-
-![Local contract workspace](../assets/contract-lab.png)
-
-These are application screenshots, not mockups. They show synthetic source and
-accounts and do not claim a successful live Agent answer.
-
-## Historical material
-
-The [seed cases](../agentic-rag/eval/golden-set-v0.1.json) are not human-graded.
-The [90-row harness summary](../agentic-rag/eval/results/phase1-harness.summary.json)
-explicitly uses a mock adapter and `qualityEvaluation: false`. It must not be
-reported as a Direct GLM / Naive RAG / Agentic RAG quality comparison.
-
-Archived delivery reports contain earlier real-run observations, with their
-original dates and limitations. They do not certify the current environment.
-
-## A future quality study
-
-Freeze a clearly licensed corpus and a human-reviewed bilingual query set.
-Compare methods using the same corpus, provider/model settings and task budget.
-Report retrieval relevance, source support, task completion/abstention, latency
-and cost, including failures and sample size. Keep private prompts and source
-materials out of the published dataset.
+When reporting an application test, record the commit, input, dependency and
+model versions, commands, and actual outcome. A comparative quality study also
+needs independently specified tasks and scoring, consistent method budgets,
+and retained failures. Local runtime feedback should not be presented as such
+a study.

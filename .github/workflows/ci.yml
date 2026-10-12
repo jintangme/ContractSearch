@@ -20,7 +20,6 @@ jobs:
       - run: python3 scripts/check-doc-links.py
       - run: python3 -m unittest discover -s scripts/tests -v
       - run: python3 scripts/export-public-source.py
-      - run: node scripts/agentic-rag/run-eval.mjs --check
 
   java:
     runs-on: ubuntu-24.04

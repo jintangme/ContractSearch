@@ -41,7 +41,23 @@ public class GlmStructuredActionClient {
                 .build();
         GlmHttpTransport.Response response = transport.send(request);
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
-            throw new IOException("GLM provider returned HTTP " + response.statusCode());
+            int attempts = 1;
+            // Only the explicit terminal gateway protocol can attest that no
+            // upstream request was made. Ordinary provider errors cost one attempt.
+            if (response.statusCode() == 402) {
+                try {
+                    JsonNode error = objectMapper.readTree(response.body());
+                    JsonNode count = error.path("providerCalls");
+                    if (error.path("error").asText().equals("ProviderRequestError")
+                            && error.path("errorCode").asText().equals("INSUFFICIENT_BALANCE")
+                            && error.path("providerStatus").asInt() == 402
+                            && error.path("terminal").asBoolean()
+                            && count.isIntegralNumber() && count.canConvertToInt()
+                            && (count.asInt() == 0 || count.asInt() == 1))
+                        attempts = count.asInt();
+                } catch (IOException ignored) { /* Preserve the status, never echo a provider body. */ }
+            }
+            throw new ProviderHttpException(response.statusCode(), attempts);
         }
         return objectMapper.readTree(response.body());
     }

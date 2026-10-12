@@ -2,6 +2,9 @@ const express = require('express')
 const cors = require('cors')
 const { compileSolidity } = require('./compiler')
 const { parseSolidityAst } = require('./ast-parser')
+const { validatePlan } = require('./candidate-plan')
+const { validateCandidate } = require('./candidate-validation')
+const { preflightPlan } = require('./candidate-preflight')
 const { callContract, closeRuntime, deployContract, initRuntime } = require('./runtime')
 
 const PORT = Number(process.env.RUNTIME_PORT || process.env.PORT || 19090)
@@ -33,6 +36,18 @@ app.post('/api/runtime/compile', async (req, res) => {
 app.post('/api/runtime/parse', (req, res) => {
   const result = parseSolidityAst({ sources: req.body?.sources })
   res.status(result.success ? 200 : 400).json(result)
+})
+
+app.post('/api/runtime/validation-plan', async (req, res, next) => {
+  try {
+    const result=validatePlan(req.body?.plan)
+    if (req.body?.sourceCode) result.abiPreflight=await preflightPlan(req.body.plan,req.body.sourceCode,req.body.completeSource === true)
+    res.json(result)
+  } catch (err) { next(err) }
+})
+
+app.post('/api/runtime/validate-candidate', async (req, res, next) => {
+  try { res.json(await validateCandidate(req.body)) } catch (err) { next(err) }
 })
 
 app.post('/api/runtime/deploy', async (req, res) => {

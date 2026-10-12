@@ -45,12 +45,15 @@ public class PrecheckContractTool implements AgentTool {
         Map<String, Object> contract = catalogClient.getContract(contractId, context.userId());
         String name = String.valueOf(contract.getOrDefault("contractName", "Contract " + contractId));
         String source = String.valueOf(contract.getOrDefault("sourceCode", ""));
+        String sourceHash = context.workspace().observeSource(contractId, source, false).sourceHash();
         Map<String, Object> precheck = precheckClient.precheck(name, source, properties.model(), context.userId());
         Map<String, Object> output = new LinkedHashMap<>(precheck);
         output.put("contractId", contractId);
+        output.put("sourceHash", sourceHash);
         String excerpt = summary(precheck);
         Map<String, Object> metadata = new LinkedHashMap<>();
         metadata.put("contractId", contractId);
+        metadata.put("sourceHash", sourceHash);
         metadata.put("saved", false);
         metadata.put("contentBoundary", "UNTRUSTED");
         if (precheck.get("riskLevel") != null) metadata.put("riskLevel", precheck.get("riskLevel"));
